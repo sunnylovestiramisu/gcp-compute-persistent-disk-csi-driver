@@ -281,7 +281,7 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels, tc.enableStoragePools)
+			p, _, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels, tc.enableStoragePools, false)
 			if gotErr := err != nil; gotErr != tc.expectErr {
 				t.Fatalf("ExtractAndDefaultParameters(%+v) = %v; expectedErr: %v", tc.parameters, err, tc.expectErr)
 			}
