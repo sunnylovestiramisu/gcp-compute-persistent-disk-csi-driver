@@ -55,6 +55,7 @@ COPY --from=debian /sbin/fsck /sbin/fsck
 COPY --from=debian /sbin/fsck* /sbin/
 COPY --from=debian /sbin/fsck.xfs /sbin/fsck.xfs
 # Add dependencies for LVM
+COPY --from=debian /etc/lvm /etc/lvm
 COPY --from=debian /etc/lvm* /etc/
 COPY --from=debian /lib/systemd/system/blk-availability.service /lib/systemd/system/blk-availability.service
 COPY --from=debian /lib/systemd/system/lvm2-lvmpolld.service /lib/systemd/system/lvm2-lvmpolld.service
@@ -131,6 +132,9 @@ COPY --from=debian /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libblkid.so.1 \
 
 # Copy NVME support required script and rules into distroless base.
 COPY deploy/kubernetes/udev/google_nvme_id /lib/udev_containerized/google_nvme_id
+
+SHELL ["/bin/bash", "-c"]
+RUN /bin/sed -i -e "s/.*allow_mixed_block_sizes = 0.*/	allow_mixed_block_sizes = 1/" /etc/lvm/lvm.conf
 
 # Build stage used for validation of the output-image
 # See validate-container-linux-* targets in Makefile

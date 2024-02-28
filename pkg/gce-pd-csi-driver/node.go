@@ -311,6 +311,10 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
+	// LVM PoC Steps
+
+	// End of LVM PoC Steps
+
 	if err := prepareStagePath(stagingTargetPath, ns.Mounter); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("mkdir failed on disk %s (%v)", stagingTargetPath, err.Error()))
 	}
