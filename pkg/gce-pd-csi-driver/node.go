@@ -303,15 +303,110 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err.Error()))
 	}
 
-	klog.V(4).Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
+	klog.Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
 
 	// Part 2: Check if mount already exists at stagingTargetPath
 	if ns.isVolumePathMounted(stagingTargetPath) {
-		klog.V(4).Infof("NodeStageVolume succeeded on volume %v to %s, mount already exists.", volumeID, stagingTargetPath)
+		klog.Infof("NodeStageVolume succeeded on volume %v to %s, mount already exists.", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
 	// LVM PoC Steps
+
+	klog.V(2).Infof("====== Start LVM PoC Steps ======")
+
+	// vgcreate --zero y cachegroup /dev/sdb /dev/nvme0n1
+	// Retry the api will trigger error "A volume group called cachegroup already exists"
+	klog.V(2).Infof("====== vgcreate ======")
+	args := []string{
+		"--zero",
+		"y",
+		"cachegroup",
+		"/dev/sdb",
+		"/dev/nvme0n1",
+	}
+	info, err := common.RunCommand("vgcreate", args...)
+	if err != nil {
+		klog.Errorf("vgcreate error %v: %s", err, info)
+	}
+
+	// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
+	klog.V(2).Infof("====== lvcreate fast cache layer ======")
+	args = []string{
+		"-n",
+		"fast",
+		"-L",
+		"50G",
+		"cachegroup",
+		"/dev/nvme0n1",
+	}
+	info, err = common.RunCommand("lvcreate", args...)
+	if err != nil {
+		klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
+		return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
+	}
+
+	// lvcreate -n main -l 100%PVS cachegroup /dev/sdb
+	klog.V(2).Infof("====== lvcreate main cache layer ======")
+	args = []string{
+		"-n",
+		"main",
+		"-l",
+		"100%PVS",
+		"cachegroup",
+		"/dev/sdb",
+	}
+	info, err = common.RunCommand("lvcreate", args...)
+	if err != nil {
+		klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
+		return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
+	}
+
+	// lvconvert --type cache --cachevol fast --zero y --cachemode writeback cachegroup/main --force -y
+	klog.V(2).Infof("====== lvconvert fast and main to cache ======")
+	args = []string{
+		"--type",
+		"cache",
+		"--cachevol",
+		"fast",
+		"--zero",
+		"y",
+		"--cachemode",
+		"writeback",
+		"cachegroup/main",
+		"--force",
+		"-y",
+	}
+	info, err = common.RunCommand("lvconvert", args...)
+	if err != nil {
+		klog.V(2).Infof("====== lvconvert error %v: %s ======", err, info)
+		return nil, fmt.Errorf("lvconvert error %w: %s", err, info)
+	}
+
+	// vgchange -ay cachegroup
+	klog.V(2).Infof("====== vgchange -ay cachegroup ======")
+	args = []string{
+		"-ay",
+		"cachegroup",
+	}
+	info, err = common.RunCommand("vgchange", args...)
+	if err != nil {
+		return nil, fmt.Errorf("vgchange error %w: %s", err, info)
+	}
+
+	// mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard /dev/cachegroup/main
+	klog.V(2).Infof("====== mkfs.ext4 format the cache ======")
+	args = []string{
+		"-m",
+		"0",
+		"-E",
+		"lazy_itable_init=0,lazy_journal_init=0,discard",
+		"/dev/cachegroup/main",
+	}
+	info, err = common.RunCommand("mkfs.ext4", args...)
+	if err != nil {
+		return nil, fmt.Errorf("mkfs.ext4 error %w: %s", err, info)
+	}
 
 	// End of LVM PoC Steps
 

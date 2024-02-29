@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -14,8 +16,10 @@ const (
 // RunCommand wraps a k8s exec to deal with the no child process error. Same as exec.CombinedOutput.
 // On error, the output is included so callers don't need to echo it again.
 func RunCommand(cmd string, args ...string) ([]byte, error) {
+	klog.V(2).Infof("====== Start RunCommand ======")
 	execCmd := exec.Command(cmd, args...)
 	output, err := execCmd.CombinedOutput()
+	klog.V(2).Infof("====== RunCommand output: %v ======", string(output))
 	if err != nil {
 		if err.Error() == errNoChildProcesses {
 			if execCmd.ProcessState.Success() {
@@ -25,6 +29,7 @@ func RunCommand(cmd string, args ...string) ([]byte, error) {
 			// Get actual error
 			err = &exec.ExitError{ProcessState: execCmd.ProcessState}
 		}
+		klog.V(2).Infof("====== RunCommand error is: %v ======", err)
 		return output, fmt.Errorf("%s %s failed: %w; output: %s", cmd, strings.Join(args, " "), err, string(output))
 	}
 	return output, nil
