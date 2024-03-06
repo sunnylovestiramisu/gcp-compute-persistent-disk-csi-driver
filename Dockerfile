@@ -25,7 +25,7 @@ RUN GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') GCE_PD_CSI_STAGING_VERSION=$
 FROM gke.gcr.io/debian-base:bullseye-v1.4.3-gke.5 as debian
 # Install necessary dependencies
 # google_nvme_id script depends on the following packages: nvme-cli, xxd, bash
-RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs nvme-cli xxd bash lvm2
+RUN clean-install util-linux e2fsprogs mount ca-certificates udev xfsprogs nvme-cli xxd bash kmod lvm2
 
 # Since we're leveraging apt to pull in dependencies, we use `gcr.io/distroless/base` because it includes glibc.
 FROM gcr.io/distroless/base-debian11 as distroless-base
@@ -71,6 +71,7 @@ COPY --from=debian /usr/lib/tmpfiles.d/lvm2.conf /usr/lib/tmpfiles.d/lvm2.conf
 COPY --from=debian /sbin/lv* /sbin/
 COPY --from=debian /sbin/pv* /sbin/
 COPY --from=debian /sbin/vg* /sbin/
+COPY --from=debian /sbin/modprobe /sbin/modprobe
 # End of dependencies for LVM
 COPY --from=debian /sbin/mke2fs /sbin/mke2fs
 COPY --from=debian /sbin/mkfs* /sbin/
@@ -135,6 +136,8 @@ COPY deploy/kubernetes/udev/google_nvme_id /lib/udev_containerized/google_nvme_i
 
 SHELL ["/bin/bash", "-c"]
 RUN /bin/sed -i -e "s/.*allow_mixed_block_sizes = 0.*/	allow_mixed_block_sizes = 1/" /etc/lvm/lvm.conf
+RUN /bin/sed -i -e "s/.*udev_sync = 1.*/	udev_sync = 0/" /etc/lvm/lvm.conf
+RUN /bin/sed -i -e "s/.*udev_rules = 1.*/	udev_rules = 0/" /etc/lvm/lvm.conf
 
 # Build stage used for validation of the output-image
 # See validate-container-linux-* targets in Makefile

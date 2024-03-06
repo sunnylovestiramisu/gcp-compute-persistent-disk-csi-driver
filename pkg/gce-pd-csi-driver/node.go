@@ -330,6 +330,13 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		klog.Errorf("vgcreate error %v: %s", err, info)
 	}
 
+	klog.V(2).Infof("====== vgscan ======")
+	args = []string{}
+	info, err = common.RunCommand("vgscan", args...)
+	if err != nil {
+		klog.Errorf("vgscan error %v: %s", err, info)
+	}
+
 	// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
 	klog.V(2).Infof("====== lvcreate fast cache layer ======")
 	args = []string{
