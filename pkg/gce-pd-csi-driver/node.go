@@ -298,6 +298,8 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		partition = part
 	}
 	devicePath, err := getDevicePath(ns, volumeID, partition)
+	// LVM devicePath is the main cachegroup
+	devicePath = "/dev/cachegroup/main"
 
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err.Error()))
@@ -441,7 +443,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		options = append(options, "ro")
 		klog.V(4).Infof("CSI volume is read-only, mounting with extra option ro")
 	}
-
+	// devicePath should be /dev/cachegroup/main for the LVM cache
 	err = ns.formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
 	if err != nil {
 		// If a volume is created from a content source like snapshot or cloning, the filesystem might get marked
