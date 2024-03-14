@@ -72,6 +72,14 @@ COPY --from=debian /sbin/lv* /sbin/
 COPY --from=debian /sbin/pv* /sbin/
 COPY --from=debian /sbin/vg* /sbin/
 COPY --from=debian /sbin/modprobe /sbin/modprobe
+COPY --from=debian /lib/udev /lib/udev
+COPY --from=debian /lib/udev/rules.d /lib/udev/rules.d
+COPY --from=debian /lib/udev/rules.d/55-dm.rules /lib/udev/rules.d/55-dm.rules
+COPY --from=debian /lib/udev/rules.d/60-persistent-storage-dm.rules /lib/udev/rules.d/60-persistent-storage-dm.rules
+COPY --from=debian /lib/udev/rules.d/95-dm-notify.rules /lib/udev/rules.d/95-dm-notify.rules
+COPY --from=debian /sbin/blkdeactivate /sbin/blkdeactivate
+COPY --from=debian /sbin/dmsetup /sbin/dmsetup
+COPY --from=debian /sbin/dmstats /sbin/dmstats
 # End of dependencies for LVM
 COPY --from=debian /sbin/mke2fs /sbin/mke2fs
 COPY --from=debian /sbin/mkfs* /sbin/
