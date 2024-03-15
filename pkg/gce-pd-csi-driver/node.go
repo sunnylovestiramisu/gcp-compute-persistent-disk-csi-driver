@@ -315,7 +315,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 
 	// LVM PoC Steps
 
-	klog.V(2).Infof("====== Start LVM PoC Steps ======")
+	klog.V(2).Infof("====== Start LVM PoC NodeStageVolume Steps ======")
 
 	// vgcreate --zero y cachegroup /dev/sdb /dev/nvme0n1
 	// Retry the api will trigger error "A volume group called cachegroup already exists"
@@ -509,6 +509,18 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		} else if err := ns.DeviceUtils.DisableDevice(devFsPath); err != nil {
 			klog.Warningf("Failed to disabled device %s (aka %s) for volume %s. Device may not be detached cleanly (ignored, unstaging continues): %v", devicePath, devFsPath, volumeID, err)
 		}
+	}
+	// LVM PoC Steps
+	klog.V(2).Infof("====== Start LVM PoC NodeUnstageVolume Steps ======")
+	// lvchange -an /dev/cachegroup/main
+	klog.V(2).Infof("====== lvchange -an /dev/cachegroup/main ======")
+	args := []string{
+		"-an",
+		"/dev/cachegroup/main",
+	}
+	info, err := common.RunCommand("lvchange", args...)
+	if err != nil {
+		return nil, fmt.Errorf("lvchange error %w: %s", err, info)
 	}
 
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
