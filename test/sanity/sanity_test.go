@@ -63,6 +63,7 @@ func TestSanity(t *testing.T) {
 
 	fallbackRequisiteZones := []string{}
 	enableStoragePools := false
+	enableDataCache := false
 	multiZoneVolumeHandleConfig := driver.MultiZoneVolumeHandleConfig{}
 
 	mounter := mountmanager.NewFakeSafeMounter()
@@ -70,8 +71,8 @@ func TestSanity(t *testing.T) {
 
 	//Initialize GCE Driver
 	identityServer := driver.NewIdentityServer(gceDriver)
-	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute, fallbackRequisiteZones, enableStoragePools, multiZoneVolumeHandleConfig)
-	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter))
+	controllerServer := driver.NewControllerServer(gceDriver, cloudProvider, 0, 5*time.Minute, fallbackRequisiteZones, enableStoragePools, enableDataCache, multiZoneVolumeHandleConfig)
+	nodeServer := driver.NewNodeServer(gceDriver, mounter, deviceUtils, metadataservice.NewFakeService(), mountmanager.NewFakeStatter(mounter), enableDataCache)
 	err = gceDriver.SetupGCEDriver(driverName, vendorVersion, extraLabels, identityServer, controllerServer, nodeServer)
 	if err != nil {
 		t.Fatalf("Failed to initialize GCE CSI Driver: %v", err.Error())
