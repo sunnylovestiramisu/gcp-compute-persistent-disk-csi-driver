@@ -316,30 +316,41 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		klog.V(2).Infof("====== Start LVM PoC NodeStageVolume Steps ======")
 		cacheGroupName := "cache-" + pvcNameStringSlice[len(pvcNameStringSlice)-1]
 		klog.V(2).Infof("====== cacheGroupName is %v ======", cacheGroupName)
-		// vgextend cachegroup /dev/sdc
-		klog.V(2).Infof("====== vgextend ======")
-		args := []string{
-			cacheGroupName,
-			devicePath,
-		}
-		info, err := common.RunCommand("vgextend", args...)
-		if err != nil {
-			klog.Errorf("vgextend error %v: %s", err, info)
-			// vgcreate --zero y cachegroup /dev/sdb /dev/nvme0n1
-			// Retry the api will trigger error "A volume group called cachegroup already exists"
-			klog.V(2).Infof("====== vgcreate ======")
+		/*
+			// vgextend cachegroup /dev/sdc
+			klog.V(2).Infof("====== vgextend ======")
 			args := []string{
-				"--zero",
-				"y",
 				cacheGroupName,
 				devicePath,
-				"/dev/nvme0n1",
 			}
-			info, err := common.RunCommand("vgcreate", args...)
-			if err != nil {
-				klog.Errorf("vgcreate error %v: %s", err, info)
-				return nil, fmt.Errorf("vgcreate error %w: %s", err, info)
-			}
+			info, err := common.RunCommand("vgextend", args...)
+			klog.Errorf("vgextend error %v: %s", err, info)
+		*/
+		// vgcreate --zero y cachegroup /dev/sdb /dev/nvme0n1
+		// Retry the api will trigger error "A volume group called cachegroup already exists"
+
+		// vgremove cachegroup -f
+		klog.V(2).Infof("====== vgremove %v -f ======", cacheGroupName)
+		args := []string{
+			cacheGroupName,
+			"-f",
+		}
+		info, err := common.RunCommand("vgremove", args...)
+		if err != nil {
+			klog.Errorf("vgremove error %v: %s", err, info)
+		}
+		klog.V(2).Infof("====== vgcreate ======")
+		args = []string{
+			"--zero",
+			"y",
+			cacheGroupName,
+			devicePath,
+			"/dev/nvme0n1",
+		}
+		info, err = common.RunCommand("vgcreate", args...)
+		if err != nil {
+			klog.Errorf("vgcreate error %v: %s", err, info)
+			return nil, fmt.Errorf("vgcreate error %w: %s", err, info)
 		}
 
 		klog.V(2).Infof("====== vgscan ======")
@@ -354,6 +365,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
 		klog.V(2).Infof("====== lvcreate fast cache layer ======")
 		args = []string{
+			"--yes",
 			"-n",
 			"fast",
 			"-L",
@@ -370,6 +382,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		// lvcreate -n main -l 100%PVS cachegroup /dev/sdb
 		klog.V(2).Infof("====== lvcreate main cache layer ======")
 		args = []string{
+			"--yes",
 			"-n",
 			"main",
 			"-l",
@@ -552,6 +565,39 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		info, err := common.RunCommand("lvchange", args...)
 		if err != nil {
 			return nil, fmt.Errorf("lvchange error %w: %s", err, info)
+		}
+
+		// vgremove cachegroup -f
+		klog.V(2).Infof("====== vgremove %v -f ======", cacheGroupName)
+		args = []string{
+			cacheGroupName,
+			"-f",
+		}
+		info, err = common.RunCommand("vgremove", args...)
+		if err != nil {
+			return nil, fmt.Errorf("vgremove error %w: %s", err, info)
+		}
+
+		// pvremove /dev/nvme0n1 -f
+		klog.V(2).Infof("====== pvremove /dev/nvme0n1 -f ======")
+		args = []string{
+			"/dev/nvme0n1",
+			"-f",
+		}
+		info, err = common.RunCommand("pvremove", args...)
+		if err != nil {
+			return nil, fmt.Errorf("pvremove error %w: %s", err, info)
+		}
+
+		// pvremove /dev/sdb -f
+		klog.V(2).Infof("====== pvremove %v -f ======", devicePath)
+		args = []string{
+			devicePath,
+			"-f",
+		}
+		info, err = common.RunCommand("pvremove", args...)
+		if err != nil {
+			return nil, fmt.Errorf("pvremove error %w: %s", err, info)
 		}
 	}
 
