@@ -328,26 +328,27 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		*/
 		// vgcreate --zero y cachegroup /dev/sdb /dev/nvme0n1
 		// Retry the api will trigger error "A volume group called cachegroup already exists"
-
-		// vgremove cachegroup -f
-		klog.V(2).Infof("====== vgremove %v -f ======", cacheGroupName)
-		args := []string{
-			cacheGroupName,
-			"-f",
-		}
-		info, err := common.RunCommand("vgremove", args...)
-		if err != nil {
-			klog.Errorf("vgremove error %v: %s", err, info)
-		}
+		/*
+			// vgremove cachegroup -f
+			klog.V(2).Infof("====== vgremove %v -f ======", cacheGroupName)
+			args := []string{
+				cacheGroupName,
+				"-f",
+			}
+			info, err := common.RunCommand("vgremove", args...)
+			if err != nil {
+				klog.Errorf("vgremove error %v: %s", err, info)
+			}
+		*/
 		klog.V(2).Infof("====== vgcreate ======")
-		args = []string{
+		args := []string{
 			"--zero",
 			"y",
 			cacheGroupName,
 			devicePath,
 			"/dev/nvme0n1",
 		}
-		info, err = common.RunCommand("vgcreate", args...)
+		info, err := common.RunCommand("vgcreate", args...)
 		if err != nil {
 			klog.Errorf("vgcreate error %v: %s", err, info)
 			return nil, fmt.Errorf("vgcreate error %w: %s", err, info)
@@ -471,6 +472,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		options = collectMountOptions(fstype, mnt.MountFlags)
 	} else if blk := volumeCapability.GetBlock(); blk != nil {
 		// Noop for Block NodeStageVolume
+		klog.V(2).Infof("====== block storage ======")
 		klog.V(4).Infof("NodeStageVolume succeeded on %v to %s, capability is block so this is a no-op", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
@@ -481,6 +483,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		klog.V(4).Infof("CSI volume is read-only, mounting with extra option ro")
 	}
 	// devicePath should be /dev/cachegroup/main for the LVM cache
+	klog.V(2).Infof("====== fstype is %v ======", fstype)
 	err = ns.formatAndMount(devicePath, stagingTargetPath, fstype, options, ns.Mounter)
 	if err != nil {
 		// If a volume is created from a content source like snapshot or cloning, the filesystem might get marked
