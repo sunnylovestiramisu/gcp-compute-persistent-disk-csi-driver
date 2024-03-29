@@ -328,26 +328,27 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		*/
 		// vgcreate --zero y cachegroup /dev/sdb /dev/nvme0n1
 		// Retry the api will trigger error "A volume group called cachegroup already exists"
-
-		// vgremove cachegroup -f
-		klog.V(2).Infof("====== vgremove %v -f ======", cacheGroupName)
-		args := []string{
-			cacheGroupName,
-			"-f",
-		}
-		info, err := common.RunCommand("vgremove", args...)
-		if err != nil {
-			klog.Errorf("vgremove error %v: %s", err, info)
-		}
+		/*
+			// vgremove cachegroup -f
+			klog.V(2).Infof("====== vgremove %v -f ======", cacheGroupName)
+			args := []string{
+				cacheGroupName,
+				"-f",
+			}
+			info, err := common.RunCommand("vgremove", args...)
+			if err != nil {
+				klog.Errorf("vgremove error %v: %s", err, info)
+			}
+		*/
 		klog.V(2).Infof("====== vgcreate ======")
-		args = []string{
+		args := []string{
 			"--zero",
 			"y",
 			cacheGroupName,
 			devicePath,
 			"/dev/nvme0n1",
 		}
-		info, err = common.RunCommand("vgcreate", args...)
+		info, err := common.RunCommand("vgcreate", args...)
 		if err != nil {
 			klog.Errorf("vgcreate error %v: %s", err, info)
 			return nil, fmt.Errorf("vgcreate error %w: %s", err, info)
