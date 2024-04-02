@@ -52,5 +52,5 @@ imageTag:
   # Don't change stable image without changing pdImagePlaceholder in
   # test/k8s-integration/main.go
   newName: gcr.io/songsunny-joonix/gcp-compute-persistent-disk-csi-driver
-  newTag: "latest"
+  newTag: "benchmark"
 ---

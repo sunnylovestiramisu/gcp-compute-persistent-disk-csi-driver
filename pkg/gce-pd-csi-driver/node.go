@@ -316,133 +316,204 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		klog.V(2).Infof("====== Start LVM PoC NodeStageVolume Steps ======")
 		cacheGroupName := "cache-" + pvcNameStringSlice[len(pvcNameStringSlice)-1]
 		klog.V(2).Infof("====== cacheGroupName is %v ======", cacheGroupName)
-		/*
-			// vgextend cachegroup /dev/sdc
-			klog.V(2).Infof("====== vgextend ======")
-			args := []string{
-				cacheGroupName,
-				devicePath,
-			}
-			info, err := common.RunCommand("vgextend", args...)
-			klog.Errorf("vgextend error %v: %s", err, info)
-		*/
-		// vgcreate --zero y cachegroup /dev/sdb /dev/nvme0n1
-		// Retry the api will trigger error "A volume group called cachegroup already exists"
-		/*
-			// vgremove cachegroup -f
-			klog.V(2).Infof("====== vgremove %v -f ======", cacheGroupName)
-			args := []string{
-				cacheGroupName,
-				"-f",
-			}
-			info, err := common.RunCommand("vgremove", args...)
-			if err != nil {
-				klog.Errorf("vgremove error %v: %s", err, info)
-			}
-		*/
-		klog.V(2).Infof("====== vgcreate ======")
-		args := []string{
-			"--zero",
-			"y",
-			cacheGroupName,
-			devicePath,
-			"/dev/nvme0n1",
-		}
-		info, err := common.RunCommand("vgcreate", args...)
-		if err != nil {
-			klog.Errorf("vgcreate error %v: %s", err, info)
-			return nil, fmt.Errorf("vgcreate error %w: %s", err, info)
-		}
 
-		klog.V(2).Infof("====== vgscan ======")
-		args = []string{}
-		info, err = common.RunCommand("vgscan", args...)
+		klog.V(2).Infof("====== vgscan before vgcreate ======")
+		args := []string{}
+		info, err := common.RunCommand("vgscan", args...)
+
 		if err != nil {
 			klog.Errorf("vgscan error %v: %s", err, info)
-		}
-		// Get data cache size info here
-		fastCacheSize := req.GetPublishContext()[contexLocalSsdCacheSize] + "G"
-		klog.V(2).Infof("====== fastCacheSize is %v ======", fastCacheSize)
-		// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
-		klog.V(2).Infof("====== lvcreate fast cache layer ======")
-		args = []string{
-			"--yes",
-			"-n",
-			"fast",
-			"-L",
-			fastCacheSize,
-			cacheGroupName,
-			"/dev/nvme0n1",
-		}
-		info, err = common.RunCommand("lvcreate", args...)
-		if err != nil {
-			klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
-			return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
-		}
+		} else {
+			klog.V(2).Infof("====== vgscan info %v  ======", string(info))
+			klog.V(2).Infof("====== vgscan info contains cacheGroupName or not %v ======", strings.Contains(string(info), cacheGroupName))
+			infoString := strings.ReplaceAll(string(info), "\n", " ")
+			infoString = strings.ReplaceAll(infoString, ".", "")
+			infoString = strings.ReplaceAll(infoString, "\"", "")
+			infoSlice := strings.Split(infoString, " ")
+			if strings.Contains(string(info), "Found volume group") {
+				// Existing volume group
+				klog.V(2).Infof("====== vgscan found existing volume group ======")
+				existingVolumeGroupSlice := strings.SplitAfter(infoString, "Found volume group ")
+				existingVolumeGroup := strings.TrimRight(existingVolumeGroupSlice[1], " using metadata type lvm2")
+				klog.V(2).Infof("====== existingVolumeGroup is %v ======", existingVolumeGroup)
+				if strings.Contains(string(info), "Couldn't find device with uuid") {
+					klog.V(2).Infof("====== vgscan info does not find a device's uuid ======")
+					missingDeviceUUID := infoSlice[8]
+					klog.V(2).Infof("====== missingDeviceUUID is %s ======", missingDeviceUUID)
 
-		// lvcreate -n main -l 100%PVS cachegroup /dev/sdb
-		klog.V(2).Infof("====== lvcreate main cache layer ======")
-		args = []string{
-			"--yes",
-			"-n",
-			"main",
-			"-l",
-			"100%PVS",
-			cacheGroupName,
-			devicePath,
-		}
-		info, err = common.RunCommand("lvcreate", args...)
-		if err != nil {
-			klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
-			return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
-		}
+					// pvcreate --norestorefile --uuid missingDeviceUUID /dev/nvme0n1
+					klog.V(2).Infof("====== pvcreate --norestorefile ======")
+					args = []string{
+						"--yes",
+						"-ff",
+						"--norestorefile",
+						"--uuid",
+						missingDeviceUUID,
+						"/dev/nvme0n1",
+					}
+					info, err = common.RunCommand("pvcreate", args...)
+					if err != nil {
+						klog.Errorf("pvcreate --norestorefile error %v: %s", err, info)
+						return nil, fmt.Errorf("pvcreate --norestorefile error %w: %s", err, info)
+					}
 
-		// lvconvert --type cache --cachevol fast --zero y --cachemode writeback cachegroup/main --force -y
-		klog.V(2).Infof("====== lvconvert fast and main to cache ======")
-		args = []string{
-			"--type",
-			"cache",
-			"--cachevol",
-			"fast",
-			"--zero",
-			"y",
-			"--cachemode",
-			"writeback",
-			cacheGroupName + "/main",
-			"--force",
-			"-y",
-		}
-		info, err = common.RunCommand("lvconvert", args...)
-		if err != nil {
-			klog.V(2).Infof("====== lvconvert error %v: %s ======", err, info)
-			return nil, fmt.Errorf("lvconvert error %w: %s", err, info)
-		}
+					// Get data cache size info here
+					fastCacheSize := req.GetPublishContext()[contexLocalSsdCacheSize] + "G"
+					klog.V(2).Infof("====== fastCacheSize is %v ======", fastCacheSize)
+					// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
+					klog.V(2).Infof("====== lvcreate fast cache layer again with the existingVolumeGroup ======")
+					args = []string{
+						"--yes",
+						"-n",
+						"fast",
+						"-L",
+						fastCacheSize,
+						existingVolumeGroup,
+						"/dev/nvme0n1",
+					}
+					info, err = common.RunCommand("lvcreate", args...)
+					if err != nil {
+						klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
+						return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
+					}
 
-		// vgchange -ay cachegroup
-		klog.V(2).Infof("====== vgchange -ay cachegroup ======")
-		args = []string{
-			"-ay",
-			cacheGroupName,
-		}
-		info, err = common.RunCommand("vgchange", args...)
-		if err != nil {
-			return nil, fmt.Errorf("vgchange error %w: %s", err, info)
-		}
+					if existingVolumeGroup != cacheGroupName {
+						// vgrename from existingVolumeGroup to the new cacheGroupName
+						klog.V(2).Infof("====== vgrename existingVolumeGroup cacheGroupName======")
+						args = []string{
+							existingVolumeGroup,
+							cacheGroupName,
+						}
+						info, err = common.RunCommand("vgrename", args...)
+						if err != nil {
+							klog.V(2).Infof("====== vgrename error %v: %s ======", err, info)
+							return nil, fmt.Errorf("vgrename error %w: %s", err, info)
+						}
+					}
 
-		// mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard /dev/cachegroup/main
-		klog.V(2).Infof("====== mkfs.ext4 format the cache ======")
-		args = []string{
-			"-m",
-			"0",
-			"-E",
-			"lazy_itable_init=0,lazy_journal_init=0,discard",
-			"/dev/" + cacheGroupName + "/main",
-		}
-		info, err = common.RunCommand("mkfs.ext4", args...)
-		if err != nil {
-			return nil, fmt.Errorf("mkfs.ext4 error %w: %s", err, info)
-		}
+					// vgchange -ay cachegroup
+					klog.V(2).Infof("====== vgchange -ay cachegroup after vgrename ======")
+					args = []string{
+						"-ay",
+						cacheGroupName,
+					}
+					info, err = common.RunCommand("vgchange", args...)
+					if err != nil {
+						return nil, fmt.Errorf("vgchange error %w: %s", err, info)
+					}
+				} else {
+					// Something may be wrong
+					klog.Warningf("====== Cannot find the missingDeviceUUID but volume group exists %s ======", info)
+					if strings.Contains(string(info), cacheGroupName) {
+						// vgchange -ay cachegroup
+						klog.V(2).Infof("====== only need to vgchange -ay cachegroup ======")
+						args = []string{
+							"-ay",
+							cacheGroupName,
+						}
+						info, err = common.RunCommand("vgchange", args...)
+						if err != nil {
+							return nil, fmt.Errorf("vgchange error %w: %s", err, info)
+						}
+					} else {
+						return nil, fmt.Errorf("Something is wrong")
+					}
+				}
+			} else {
+				// No existing volume group
+				klog.V(2).Infof("====== vgcreate ======")
+				args = []string{
+					"--zero",
+					"y",
+					cacheGroupName,
+					devicePath,
+					"/dev/nvme0n1",
+				}
+				info, err = common.RunCommand("vgcreate", args...)
+				if err != nil {
+					klog.Errorf("vgcreate error %v: %s", err, info)
+					return nil, fmt.Errorf("vgcreate error %w: %s", err, info)
+				}
 
+				klog.V(2).Infof("====== vgscan after vgcreate ======")
+				args = []string{}
+				info, err = common.RunCommand("vgscan", args...)
+				if err != nil {
+					klog.Errorf("vgscan error %v: %s", err, info)
+				} else {
+					klog.V(2).Infof("====== vgscan info %s  ======", info)
+				}
+				// Get data cache size info here
+				fastCacheSize := req.GetPublishContext()[contexLocalSsdCacheSize] + "G"
+				klog.V(2).Infof("====== fastCacheSize is %v ======", fastCacheSize)
+				// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
+				klog.V(2).Infof("====== lvcreate fast cache layer ======")
+				args = []string{
+					"--yes",
+					"-n",
+					"fast",
+					"-L",
+					fastCacheSize,
+					cacheGroupName,
+					"/dev/nvme0n1",
+				}
+				info, err = common.RunCommand("lvcreate", args...)
+				if err != nil {
+					klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
+					return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
+				}
+
+				// lvcreate -n main -l 100%PVS cachegroup /dev/sdb
+				klog.V(2).Infof("====== lvcreate main cache layer ======")
+				args = []string{
+					"--yes",
+					"-n",
+					"main",
+					"-l",
+					"100%PVS",
+					cacheGroupName,
+					devicePath,
+				}
+				info, err = common.RunCommand("lvcreate", args...)
+				if err != nil {
+					klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
+					return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
+				}
+
+				// lvconvert --type cache --cachevol fast --zero y --cachemode writeback cachegroup/main --force -y
+				klog.V(2).Infof("====== lvconvert fast and main to cache ======")
+				args = []string{
+					"--type",
+					"cache",
+					"--cachevol",
+					"fast",
+					"--zero",
+					"y",
+					"--cachemode",
+					"writeback",
+					cacheGroupName + "/main",
+					"--force",
+					"-y",
+				}
+				info, err = common.RunCommand("lvconvert", args...)
+				if err != nil {
+					klog.V(2).Infof("====== lvconvert error %v: %s ======", err, info)
+					return nil, fmt.Errorf("lvconvert error %w: %s", err, info)
+				}
+
+				// vgchange -ay cachegroup
+				klog.V(2).Infof("====== vgchange -ay cachegroup ======")
+				args = []string{
+					"-ay",
+					cacheGroupName,
+				}
+				info, err = common.RunCommand("vgchange", args...)
+				if err != nil {
+					return nil, fmt.Errorf("vgchange error %w: %s", err, info)
+				}
+
+			}
+		}
 		// LVM devicePath is the main cachegroup
 		klog.V(2).Infof("====== Setting LVM devicePath for mount ======")
 		devicePath = "/dev/" + cacheGroupName + "/main"
@@ -568,39 +639,6 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		info, err := common.RunCommand("lvchange", args...)
 		if err != nil {
 			return nil, fmt.Errorf("lvchange error %w: %s", err, info)
-		}
-
-		// vgremove cachegroup -f
-		klog.V(2).Infof("====== vgremove %v -f ======", cacheGroupName)
-		args = []string{
-			cacheGroupName,
-			"-f",
-		}
-		info, err = common.RunCommand("vgremove", args...)
-		if err != nil {
-			return nil, fmt.Errorf("vgremove error %w: %s", err, info)
-		}
-
-		// pvremove /dev/nvme0n1 -f
-		klog.V(2).Infof("====== pvremove /dev/nvme0n1 -f ======")
-		args = []string{
-			"/dev/nvme0n1",
-			"-f",
-		}
-		info, err = common.RunCommand("pvremove", args...)
-		if err != nil {
-			return nil, fmt.Errorf("pvremove error %w: %s", err, info)
-		}
-
-		// pvremove /dev/sdb -f
-		klog.V(2).Infof("====== pvremove %v -f ======", devicePath)
-		args = []string{
-			devicePath,
-			"-f",
-		}
-		info, err = common.RunCommand("pvremove", args...)
-		if err != nil {
-			return nil, fmt.Errorf("pvremove error %w: %s", err, info)
 		}
 	}
 
