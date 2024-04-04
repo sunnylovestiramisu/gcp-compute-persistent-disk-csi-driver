@@ -357,27 +357,27 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 						return nil, fmt.Errorf("pvcreate --norestorefile error %w: %s", err, info)
 					}
 
-					// Get data cache size info here
-					fastCacheSize := req.GetPublishContext()[contexLocalSsdCacheSize] + "G"
-					klog.V(2).Infof("====== fastCacheSize is %v ======", fastCacheSize)
-					// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
-					klog.V(2).Infof("====== lvcreate fast cache layer again with the existingVolumeGroup ======")
-					args = []string{
-						"--yes",
-						"-n",
-						"fast",
-						"-L",
-						fastCacheSize,
-						existingVolumeGroup,
-						"/dev/nvme0n1",
-					}
-					info, err = common.RunCommand("lvcreate", args...)
-					if err != nil {
-						klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
-						return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
-					}
+					if cacheGroupName != existingVolumeGroup {
+						// Get data cache size info here
+						fastCacheSize := req.GetPublishContext()[contexLocalSsdCacheSize] + "G"
+						klog.V(2).Infof("====== fastCacheSize is %v ======", fastCacheSize)
+						// lvcreate -n fast -L 50G cachegroup /dev/nvme0n1
+						klog.V(2).Infof("====== lvcreate fast cache layer again with the existingVolumeGroup ======")
+						args = []string{
+							"--yes",
+							"-n",
+							"fast",
+							"-L",
+							fastCacheSize,
+							existingVolumeGroup,
+							"/dev/nvme0n1",
+						}
+						info, err = common.RunCommand("lvcreate", args...)
+						if err != nil {
+							klog.V(2).Infof("====== lvcreate error %v: %s ======", err, info)
+							return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
+						}
 
-					if existingVolumeGroup != cacheGroupName {
 						// vgrename from existingVolumeGroup to the new cacheGroupName
 						klog.V(2).Infof("====== vgrename existingVolumeGroup cacheGroupName======")
 						args = []string{
