@@ -480,7 +480,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 					return nil, fmt.Errorf("lvcreate error %w: %s", err, info)
 				}
 
-				// lvconvert --type cache --cachevol fast --zero y --cachemode writeback cachegroup/main --force -y
+				// lvconvert --type cache --cachevol fast --zero y --cachemode writethrough cachegroup/main --force -y
 				klog.V(2).Infof("====== lvconvert fast and main to cache ======")
 				args = []string{
 					"--type",
@@ -490,7 +490,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 					"--zero",
 					"y",
 					"--cachemode",
-					"writeback",
+					"writethrough",
 					cacheGroupName + "/main",
 					"--force",
 					"-y",
