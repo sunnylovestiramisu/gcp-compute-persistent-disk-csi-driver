@@ -89,6 +89,8 @@ var (
 		http.StatusTooManyRequests: codes.ResourceExhausted,
 		http.StatusNotFound:        codes.NotFound,
 	}
+
+	validDataCacheMode = []string{DataCacheModeWriteBack, DataCacheModeWriteThrough}
 )
 
 func BytesToGbRoundDown(bytes int64) int64 {
@@ -294,6 +296,15 @@ func ConvertMiStringToInt64(str string) (int64, error) {
 	return volumehelpers.RoundUpToMiB(quantity)
 }
 
+// ConvertGiStringToInt64 converts a GiB string to int64
+func ConvertGiStringToInt64(str string) (int64, error) {
+	quantity, err := resource.ParseQuantity(str)
+	if err != nil {
+		return -1, err
+	}
+	return volumehelpers.RoundUpToGiB(quantity)
+}
+
 // ConvertStringToBool converts a string to a boolean.
 func ConvertStringToBool(str string) (bool, error) {
 	switch strings.ToLower(str) {
@@ -489,4 +500,20 @@ func VolumeIdAsMultiZone(volumeId string) (string, error) {
 	}
 	splitId[volIDToplogyValue] = MultiZoneValue
 	return strings.Join(splitId, "/"), nil
+}
+
+func StringInSlice(s string, list []string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func ValidateDataCacheMode(s string) error {
+	if StringInSlice(s, validDataCacheMode) {
+		return nil
+	}
+	return fmt.Errorf("invalid data-cache-mode %s. Only \"writeback\" and \"writethrough\" is a valid input", s)
 }

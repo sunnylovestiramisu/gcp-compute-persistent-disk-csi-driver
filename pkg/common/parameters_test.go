@@ -25,12 +25,14 @@ import (
 
 func TestExtractAndDefaultParameters(t *testing.T) {
 	tests := []struct {
-		name               string
-		parameters         map[string]string
-		labels             map[string]string
-		enableStoragePools bool
-		expectParams       DiskParameters
-		expectErr          bool
+		name                  string
+		parameters            map[string]string
+		labels                map[string]string
+		enableStoragePools    bool
+		enableDataCache       bool
+		expectParams          DiskParameters
+		expectDataCacheParams DataCacheParameters
+		expectErr             bool
 	}{
 		{
 			name:       "defaults",
@@ -277,11 +279,58 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			labels:             map[string]string{},
 			expectErr:          true,
 		},
+		{
+			name:            "data cache parameters - set default cache mode",
+			enableDataCache: true,
+			parameters:      map[string]string{ParameterKeyType: "pd-balanced", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyDataCacheSize: "1234Gi"},
+			labels:          map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:             "pd-balanced",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "foo/key",
+				Tags:                 map[string]string{},
+				Labels: map[string]string{
+					"key1": "value1",
+					"key2": "value2",
+				},
+			},
+			expectDataCacheParams: DataCacheParameters{
+				DataCacheMode: DataCacheModeWriteThrough,
+				DataCacheSize: "1234",
+			},
+		},
+		{
+			name:            "data cache parameters",
+			enableDataCache: true,
+			parameters:      map[string]string{ParameterKeyType: "pd-balanced", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyDataCacheSize: "1234Gi", ParameterKeyDataCacheMode: DataCacheModeWriteBack},
+			labels:          map[string]string{},
+			expectParams: DiskParameters{
+				DiskType:             "pd-balanced",
+				ReplicationType:      "none",
+				DiskEncryptionKMSKey: "foo/key",
+				Tags:                 map[string]string{},
+				Labels: map[string]string{
+					"key1": "value1",
+					"key2": "value2",
+				},
+			},
+			expectDataCacheParams: DataCacheParameters{
+				DataCacheMode: DataCacheModeWriteBack,
+				DataCacheSize: "1234",
+			},
+		},
+		{
+			name:            "data cache parameters - enableDataCache is false",
+			enableDataCache: false,
+			parameters:      map[string]string{ParameterKeyType: "pd-balanced", ParameterKeyReplicationType: "none", ParameterKeyDiskEncryptionKmsKey: "foo/key", ParameterKeyLabels: "key1=value1,key2=value2", ParameterKeyDataCacheSize: "1234Gi", ParameterKeyDataCacheMode: DataCacheModeWriteBack},
+			labels:          map[string]string{},
+			expectErr:       true,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			p, _, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels, tc.enableStoragePools, false)
+			p, d, err := ExtractAndDefaultParameters(tc.parameters, "testDriver", tc.labels, tc.enableStoragePools, tc.enableDataCache)
 			if gotErr := err != nil; gotErr != tc.expectErr {
 				t.Fatalf("ExtractAndDefaultParameters(%+v) = %v; expectedErr: %v", tc.parameters, err, tc.expectErr)
 			}
@@ -290,6 +339,10 @@ func TestExtractAndDefaultParameters(t *testing.T) {
 			}
 
 			if diff := cmp.Diff(p, tc.expectParams); diff != "" {
+				t.Errorf("ExtractAndDefaultParameters(%+v): -want, +got \n%s", tc.parameters, diff)
+			}
+
+			if diff := cmp.Diff(d, tc.expectDataCacheParams); diff != "" {
 				t.Errorf("ExtractAndDefaultParameters(%+v): -want, +got \n%s", tc.parameters, diff)
 			}
 		})
