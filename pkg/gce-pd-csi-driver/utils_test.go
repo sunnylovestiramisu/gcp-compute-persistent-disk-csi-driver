@@ -297,12 +297,11 @@ func TestGetReadOnlyFromCapabilities(t *testing.T) {
 
 func TestValidateStoragePools(t *testing.T) {
 	testCases := []struct {
-		name       string
-		req        *csi.CreateVolumeRequest
-		params     common.DiskParameters
-		project    string
-		expErr     error
-		enableHdHA bool
+		name    string
+		req     *csi.CreateVolumeRequest
+		params  common.DiskParameters
+		project string
+		expErr  error
 	}{
 		{
 			name: "success with storage pools not enabled",
@@ -397,58 +396,7 @@ func TestValidateStoragePools(t *testing.T) {
 				},
 			},
 			project: "test-project",
-			expErr:  fmt.Errorf("storage pools do not support regional disks"),
-		},
-		{
-			name: "fail storage pools with HdHA, even when HdHA is allowed",
-			req: &csi.CreateVolumeRequest{
-				Name: "test-name",
-			},
-			params: common.DiskParameters{
-				DiskType: "hyperdisk-balanced-high-availability",
-				StoragePools: []common.StoragePool{
-					{
-						Project:      "test-project",
-						Zone:         "us-central1-a",
-						Name:         "storagePool-1",
-						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
-					},
-					{
-						Project:      "test-project",
-						Zone:         "us-central1-b",
-						Name:         "storagePool-2",
-						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
-					},
-				},
-			},
-			project:    "test-project",
-			expErr:     fmt.Errorf("invalid disk-type: \"hyperdisk-balanced-high-availability\". storage pools only support hyperdisk-balanced or hyperdisk-throughput"),
-			enableHdHA: true,
-		},
-		{
-			name: "fail storage pools with HdHA when HdHA is not allowed",
-			req: &csi.CreateVolumeRequest{
-				Name: "test-name",
-			},
-			params: common.DiskParameters{
-				DiskType: "hyperdisk-balanced-high-availability",
-				StoragePools: []common.StoragePool{
-					{
-						Project:      "test-project",
-						Zone:         "us-central1-a",
-						Name:         "storagePool-1",
-						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
-					},
-					{
-						Project:      "test-project",
-						Zone:         "us-central1-b",
-						Name:         "storagePool-2",
-						ResourceName: "projects/test-project/zones/us-central1-a/storagePools/storagePool-1",
-					},
-				},
-			},
-			project: "test-project",
-			expErr:  fmt.Errorf("invalid disk-type: \"hyperdisk-balanced-high-availability\". storage pools only support hyperdisk-balanced or hyperdisk-throughput"),
+			expErr:  fmt.Errorf("storage pools do not support regional PD"),
 		},
 		{
 			name: "fail storage pools with disk clones",

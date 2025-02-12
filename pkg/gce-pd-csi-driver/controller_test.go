@@ -224,64 +224,6 @@ func TestCreateSnapshotArguments(t *testing.T) {
 			},
 			expErrCode: codes.InvalidArgument,
 		},
-		{
-			name: "fail to create image for HdHA",
-			req: &csi.CreateSnapshotRequest{
-				Name:           name,
-				SourceVolumeId: testRegionalID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2", common.ParameterKeySnapshotType: "images"},
-			},
-			seedDisks: []*gce.CloudDisk{
-				gce.CloudDiskFromV1(&compute.Disk{
-					Name:     name,
-					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:     common.ParameterHdHADiskType,
-					Region:   "country-region",
-				}),
-			},
-			expErrCode: codes.InvalidArgument,
-		},
-		{
-			name: "success with creating snapshot for HdHA",
-			req: &csi.CreateSnapshotRequest{
-				Name:           name,
-				SourceVolumeId: testRegionalID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2"},
-			},
-			seedDisks: []*gce.CloudDisk{
-				gce.CloudDiskFromV1(&compute.Disk{
-					Name:     name,
-					SelfLink: fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:     common.ParameterHdHADiskType,
-					Region:   "country-region",
-				}),
-			},
-			expSnapshot: &csi.Snapshot{
-				SnapshotId:     testSnapshotID,
-				SourceVolumeId: testRegionalID,
-				CreationTime:   tp,
-				SizeBytes:      common.GbToBytes(gce.DiskSizeGb),
-				ReadyToUse:     false,
-			},
-		},
-		{
-			name: "fail to create snapshot for HdHA multi-writer",
-			req: &csi.CreateSnapshotRequest{
-				Name:           name,
-				SourceVolumeId: testRegionalID,
-				Parameters:     map[string]string{common.ParameterKeyStorageLocations: " US-WEST2"},
-			},
-			seedDisks: []*gce.CloudDisk{
-				gce.CloudDiskFromV1(&compute.Disk{
-					Name:       name,
-					SelfLink:   fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/project/regions/country-region/name/%s", name),
-					Type:       common.ParameterHdHADiskType,
-					AccessMode: gceReadWriteManyAccessMode,
-					Region:     "country-region",
-				}),
-			},
-			expErrCode: codes.InvalidArgument,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -313,7 +255,8 @@ func TestCreateSnapshotArguments(t *testing.T) {
 		}
 
 		if !reflect.DeepEqual(snapshot, tc.expSnapshot) {
-			t.Errorf("Expected snapshot: %#v\n to equal snapshot: %#v\n", snapshot, tc.expSnapshot)
+			errStr := fmt.Sprintf("Expected snapshot: %#v\n to equal snapshot: %#v\n", snapshot, tc.expSnapshot)
+			t.Errorf("%s", errStr)
 		}
 	}
 }
@@ -603,7 +546,8 @@ func TestListSnapshotsArguments(t *testing.T) {
 			t.Fatalf("Expected snapshots number %v, got no snapshot", tc.numSnapshots)
 		}
 		if len(snapshots) != tc.expectedCount {
-			t.Errorf("Expected snapshot number to equal: %v", tc.numSnapshots)
+			errStr := fmt.Sprintf("Expected snapshot number to equal: %v", tc.numSnapshots)
+			t.Errorf("error %v:", errStr)
 		}
 	}
 }
@@ -913,87 +857,6 @@ func TestCreateVolumeArguments(t *testing.T) {
 				},
 			},
 		},
-		// HdHA tests
-		{
-			name: "success with topology with HdHA",
-			req: &csi.CreateVolumeRequest{
-				Name:               name,
-				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCaps,
-				Parameters:         map[string]string{common.ParameterKeyType: common.ParameterHdHADiskType},
-				AccessibilityRequirements: &csi.TopologyRequirement{
-					Preferred: []*csi.Topology{
-						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
-						},
-						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
-						},
-					},
-				},
-			},
-			expVol: &csi.Volume{
-				CapacityBytes: common.GbToBytes(20),
-				VolumeId:      testRegionalID,
-				VolumeContext: nil,
-				AccessibleTopology: []*csi.Topology{
-					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
-					},
-					{
-						Segments: map[string]string{common.TopologyKeyZone: region + "-b"},
-					},
-				},
-			},
-		},
-		{
-			name: "fail not enough topology with HdHA",
-			req: &csi.CreateVolumeRequest{
-				Name:               name,
-				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCaps,
-				Parameters: map[string]string{
-					common.ParameterKeyType: common.ParameterHdHADiskType,
-				},
-				AccessibilityRequirements: &csi.TopologyRequirement{
-					Requisite: []*csi.Topology{
-						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
-						},
-					},
-					Preferred: []*csi.Topology{
-						{
-							Segments: map[string]string{common.TopologyKeyZone: region + "-c"},
-						},
-					},
-				},
-			},
-			expErrCode: codes.InvalidArgument,
-		},
-		{
-			name: "success with no toplogy specified with HdHA",
-			req: &csi.CreateVolumeRequest{
-				Name:               name,
-				CapacityRange:      stdCapRange,
-				VolumeCapabilities: stdVolCaps,
-				Parameters: map[string]string{
-					common.ParameterKeyType: common.ParameterHdHADiskType,
-				},
-			},
-			expVol: &csi.Volume{
-				CapacityBytes: common.GbToBytes(20),
-				VolumeId:      testRegionalID,
-				VolumeContext: nil,
-				AccessibleTopology: []*csi.Topology{
-					{
-						Segments: map[string]string{common.TopologyKeyZone: zone},
-					},
-					{
-						Segments: map[string]string{common.TopologyKeyZone: secondZone},
-					},
-				},
-			},
-		},
 		{
 			name: "success with block volume capability",
 			req: &csi.CreateVolumeRequest{
@@ -1267,9 +1130,9 @@ func TestCreateVolumeArguments(t *testing.T) {
 				t.Errorf("Accessible topologies are not the same length, got %v, expected %v", len(vol.GetAccessibleTopology()), len(tc.expVol.GetAccessibleTopology()))
 			}
 			for i := 0; i < len(vol.GetAccessibleTopology()); i++ {
-				errStr += fmt.Sprintf("Got topology %#v\nExpected toplogy %#v\n\n", vol.GetAccessibleTopology()[i], tc.expVol.GetAccessibleTopology()[i])
+				errStr = errStr + fmt.Sprintf("Got topology %#v\nExpected toplogy %#v\n\n", vol.GetAccessibleTopology()[i], tc.expVol.GetAccessibleTopology()[i])
 			}
-			t.Error(errStr)
+			t.Errorf("error %v:", errStr)
 		}
 	}
 }
@@ -2816,7 +2679,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 		nilVolumeContentSource       bool
 		reqParameters                map[string]string
 		requestCapacityRange         *csi.CapacityRange
-		cloneIsRegional              bool
+		replicationType              string
 		expectedLocationRequirements *locationRequirements
 		expectedErr                  bool
 	}{
@@ -2827,8 +2690,8 @@ func TestCloningLocationRequirements(t *testing.T) {
 			reqParameters: map[string]string{
 				common.ParameterKeyReplicationType: replicationTypeNone,
 			},
-			cloneIsRegional:              false,
-			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcIsRegional: false, cloneIsRegional: false},
+			replicationType:              replicationTypeNone,
+			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeNone},
 			expectedErr:                  false,
 		},
 		{
@@ -2838,8 +2701,8 @@ func TestCloningLocationRequirements(t *testing.T) {
 			reqParameters: map[string]string{
 				common.ParameterKeyReplicationType: replicationTypeRegionalPD,
 			},
-			cloneIsRegional:              true,
-			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: "", srcIsRegional: true, cloneIsRegional: true},
+			replicationType:              replicationTypeRegionalPD,
+			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: "", srcReplicationType: replicationTypeRegionalPD, cloneReplicationType: replicationTypeRegionalPD},
 			expectedErr:                  false,
 		},
 		{
@@ -2847,10 +2710,10 @@ func TestCloningLocationRequirements(t *testing.T) {
 			sourceVolumeID:       testZonalVolumeSourceID,
 			requestCapacityRange: stdCapRange,
 			reqParameters: map[string]string{
-				common.ParameterKeyType: common.ParameterHdHADiskType,
+				common.ParameterKeyReplicationType: replicationTypeRegionalPD,
 			},
-			cloneIsRegional:              true,
-			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcIsRegional: false, cloneIsRegional: true},
+			replicationType:              replicationTypeRegionalPD,
+			expectedLocationRequirements: &locationRequirements{srcVolRegion: region, srcVolZone: zone, srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeRegionalPD},
 			expectedErr:                  false,
 		},
 		{
@@ -2860,7 +2723,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			reqParameters: map[string]string{
 				common.ParameterKeyReplicationType: replicationTypeRegionalPD,
 			},
-			cloneIsRegional:              true,
+			replicationType:              replicationTypeRegionalPD,
 			expectedLocationRequirements: nil,
 			expectedErr:                  false,
 		},
@@ -2871,7 +2734,7 @@ func TestCloningLocationRequirements(t *testing.T) {
 			reqParameters: map[string]string{
 				common.ParameterKeyReplicationType: replicationTypeNone,
 			},
-			cloneIsRegional:              false,
+			replicationType:              replicationTypeNone,
 			expectedLocationRequirements: nil,
 			expectedErr:                  true,
 		},
@@ -2896,12 +2759,12 @@ func TestCloningLocationRequirements(t *testing.T) {
 			req.VolumeContentSource = nil
 		}
 
-		locationRequirements, err := cloningLocationRequirements(req, tc.cloneIsRegional)
+		locationRequirements, err := cloningLocationRequirements(req, tc.replicationType)
 
 		if err != nil != tc.expectedErr {
 			t.Fatalf("Got error %v, expected error %t", err, tc.expectedErr)
 		}
-		input := fmt.Sprintf("cloningLocationRequirements(%v, %v)", req, tc.cloneIsRegional)
+		input := fmt.Sprintf("cloningLocationRequirements(%v, %s", req, tc.replicationType)
 		if fmt.Sprintf("%v", tc.expectedLocationRequirements) != fmt.Sprintf("%v", locationRequirements) {
 			t.Fatalf("%s returned unexpected diff got: %v, want %v", input, locationRequirements, tc.expectedLocationRequirements)
 		}
@@ -3054,7 +2917,7 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			sourceCapacityRange:  stdCapRange,
 			enableStoragePools:   true,
 			reqParameters: map[string]string{
-				common.ParameterKeyType:                 "hyperdisk-balanced",
+				common.ParameterKeyType:                 "test-type",
 				common.ParameterKeyReplicationType:      replicationTypeNone,
 				common.ParameterKeyDiskEncryptionKmsKey: "encryption-key",
 				common.ParameterKeyStoragePools:         "projects/test-project/zones/country-region-zone/storagePools/storagePool-1",
@@ -3518,13 +3381,13 @@ func TestCreateVolumeWithVolumeSourceFromVolume(t *testing.T) {
 			if serverError.Code() != tc.expErrCode {
 				t.Fatalf("Expected error code: %v, got: %v. err : %v", tc.expErrCode, serverError.Code(), err)
 			}
-			if tc.expErrMsg != "" && !strings.Contains(err.Error(), tc.expErrMsg) {
-				t.Fatalf("Got error: %v, expected error: %v", err.Error(), tc.expErrMsg)
-			}
 			continue
 		}
 		if tc.expErrCode != codes.OK {
 			t.Fatalf("Expected error: %v, got no error", tc.expErrCode)
+		}
+		if tc.expErrMsg != "" && tc.expErrMsg != err.Error() {
+			t.Fatalf("Got error: %v, expected error: %v", err.Error(), tc.expErrMsg)
 		}
 
 		// Make sure the response has the source volume.
@@ -4204,7 +4067,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 					},
 				},
 			},
-			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcIsRegional: false, cloneIsRegional: false},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeNone},
 			numZones: 1,
 			expZones: []string{"us-central1-a"},
 		},
@@ -4227,7 +4090,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 				},
 				Preferred: []*csi.Topology{},
 			},
-			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-c", srcIsRegional: false, cloneIsRegional: true},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-c", srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeRegionalPD},
 			numZones: 2,
 			expZones: []string{"us-central1-c", "us-central1-f"},
 		},
@@ -4295,7 +4158,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 					},
 				},
 			},
-			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcIsRegional: true, cloneIsRegional: true},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcReplicationType: replicationTypeRegionalPD, cloneReplicationType: replicationTypeRegionalPD},
 			numZones: 5,
 			expZones: []string{"us-central1-b", "us-central1-a", "us-central1-c", "us-central1-d", "us-central1-f"},
 		},
@@ -4328,7 +4191,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 					},
 				},
 			},
-			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcIsRegional: false, cloneIsRegional: true},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeRegionalPD},
 			numZones: 5,
 			expZones: []string{"us-central1-a", "us-central1-b", "us-central1-c", "us-central1-d", "us-central1-f"},
 		},
@@ -4358,7 +4221,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 					},
 				},
 			},
-			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcIsRegional: false, cloneIsRegional: true},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeRegionalPD},
 			numZones: 3,
 			expZones: []string{"us-central1-a", "us-central1-c", "us-central1-b"},
 		},
@@ -4388,7 +4251,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 					},
 				},
 			},
-			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-b", srcIsRegional: false, cloneIsRegional: true},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-b", srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeRegionalPD},
 			numZones: 3,
 			expZones: []string{"us-central1-b", "us-central1-c", "us-central1-f"},
 		},
@@ -4413,7 +4276,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 				},
 			},
 			fallbackRequisiteZones: []string{"us-central1-a", "us-central1-f", "us-central1-g"},
-			locReq:                 &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcIsRegional: false, cloneIsRegional: true},
+			locReq:                 &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeRegionalPD},
 			numZones:               2,
 			expZones:               []string{"us-central1-a", "us-central1-b"},
 		},
@@ -4435,7 +4298,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 				},
 			},
 			fallbackRequisiteZones: []string{"us-central1-a", "us-central1-b", "us-central1-c"},
-			locReq:                 &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-b", srcIsRegional: false, cloneIsRegional: true},
+			locReq:                 &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-b", srcReplicationType: replicationTypeNone, cloneReplicationType: replicationTypeRegionalPD},
 			numZones:               2,
 			expZones:               []string{"us-central1-b", "us-central1-c"},
 		},
@@ -4453,7 +4316,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 				},
 			},
 			fallbackRequisiteZones: []string{"us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"},
-			locReq:                 &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-b", srcIsRegional: true, cloneIsRegional: true},
+			locReq:                 &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-b", srcReplicationType: replicationTypeRegionalPD, cloneReplicationType: replicationTypeRegionalPD},
 			numZones:               2,
 			expZones:               []string{"us-central1-b", "us-central1-c"},
 		},
@@ -4548,7 +4411,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 					},
 				},
 			},
-			locReq:   &locationRequirements{srcVolRegion: "us-east1", srcVolZone: "us-east1-a", cloneIsRegional: false},
+			locReq:   &locationRequirements{srcVolRegion: "us-east1", srcVolZone: "us-east1-a", cloneReplicationType: replicationTypeNone},
 			numZones: 1,
 			expErr:   true,
 		},
@@ -4578,7 +4441,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 					},
 				},
 			},
-			locReq:   &locationRequirements{srcVolRegion: "us-east1", srcVolZone: "us-east1-a", cloneIsRegional: true},
+			locReq:   &locationRequirements{srcVolRegion: "us-east1", srcVolZone: "us-east1-a", cloneReplicationType: replicationTypeRegionalPD},
 			numZones: 2,
 			expErr:   true,
 		},
@@ -4608,7 +4471,7 @@ func TestPickZonesFromTopology(t *testing.T) {
 					},
 				},
 			},
-			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", cloneIsRegional: true},
+			locReq:   &locationRequirements{srcVolRegion: "us-central1", srcVolZone: "us-central1-a", cloneReplicationType: replicationTypeRegionalPD},
 			numZones: 4,
 			expErr:   true,
 		},

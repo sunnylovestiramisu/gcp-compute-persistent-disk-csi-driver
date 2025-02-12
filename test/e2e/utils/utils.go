@@ -68,9 +68,11 @@ func GCEClientAndDriverSetup(instance *remote.InstanceInfo, driverConfig DriverC
 		"--use-instance-api-to-list-volumes-published-nodes",
 		"--supports-dynamic-iops-provisioning=hyperdisk-balanced,hyperdisk-extreme",
 		"--supports-dynamic-throughput-provisioning=hyperdisk-balanced,hyperdisk-throughput,hyperdisk-ml",
-		"--allow-hdha-provisioning",
-		"--device-in-use-timeout=10s", // Set lower than the usual value to expedite tests
 		fmt.Sprintf("--fallback-requisite-zones=%s", strings.Join(driverConfig.Zones, ",")),
+
+		"--enable-controller-data-cache",
+		"--enable-node-data-cache",
+		fmt.Sprintf("--node-name=%s", utilcommon.TestNode),
 	}
 	extra_flags = append(extra_flags, fmt.Sprintf("--compute-endpoint=%s", driverConfig.ComputeEndpoint))
 	extra_flags = append(extra_flags, driverConfig.ExtraFlags...)
@@ -278,10 +280,37 @@ func CopyFile(instance *remote.InstanceInfo, src, dest string) error {
 	return nil
 }
 
+func InstallDependencies(instance *remote.InstanceInfo, pkgs []string) error {
+	_, _ = instance.SSH("apt-get", "update")
+	for _, pkg := range pkgs {
+		output, err := instance.SSH("apt-get", "install", "-y", pkg)
+		if err != nil {
+			return fmt.Errorf("failed to install package %s. Output: %v, errror: %v", pkg, output, err.Error())
+		}
+	}
+	return nil
+}
+
+func SetupDataCachingConfig(instance *remote.InstanceInfo) error {
+	output, err := instance.SSH("/bin/sed", "-i", "-e", "\"s/.*allow_mixed_block_sizes = 0.*/	allow_mixed_block_sizes = 1/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field allow_mixed_block_sizes, error:%v; output: %v", err, output)
+	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "\"s/.*udev_sync = 1.*/ udev_sync = 0/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field udev_sync, error:%v; output: %v", err, output)
+	}
+	output, err = instance.SSH("/bin/sed", "-i", "-e", "\"s/.*udev_rules = 1.*/ udev_rules = 0/\"", "/etc/lvm/lvm.conf")
+	if err != nil {
+		return fmt.Errorf("failed to update field udev_rules, error:%v; output: %v", err, output)
+	}
+	return nil
+}
+
 // ValidateLogicalLinkIsDisk takes a symlink location at "link" and finds the
 // link location - it then finds the backing PD using either scsi_id or
 // google_nvme_id (depending on the /dev path) and validates that it is the
-// same as diskName
+// same as diskName“
 func ValidateLogicalLinkIsDisk(instance *remote.InstanceInfo, link, diskName string) (bool, error) {
 	const (
 		scsiPattern       = `^0Google\s+PersistentDisk\s+([\S]+)\s*$`

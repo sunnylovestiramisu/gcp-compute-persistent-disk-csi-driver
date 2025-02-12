@@ -13,7 +13,6 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/gax-go/v2 v2.12.4
-	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/kubernetes-csi/csi-proxy/client v1.1.3
 	github.com/kubernetes-csi/csi-test/v5 v5.3.0
 	github.com/onsi/ginkgo/v2 v2.20.1
@@ -56,7 +55,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/emicklei/go-restful v2.9.5+incompatible // indirect
+	github.com/emicklei/go-restful v2.16.0+incompatible // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect

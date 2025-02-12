@@ -76,7 +76,7 @@ github.com/container-storage-interface/spec/lib/go/csi
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
-# github.com/emicklei/go-restful v2.9.5+incompatible
+# github.com/emicklei/go-restful v2.16.0+incompatible
 ## explicit
 github.com/emicklei/go-restful
 github.com/emicklei/go-restful/log
@@ -193,10 +193,6 @@ github.com/hashicorp/errwrap
 # github.com/hashicorp/go-multierror v1.1.0
 ## explicit; go 1.14
 github.com/hashicorp/go-multierror
-# github.com/hashicorp/golang-lru/v2 v2.0.7
-## explicit; go 1.18
-github.com/hashicorp/golang-lru/v2/expirable
-github.com/hashicorp/golang-lru/v2/internal
 # github.com/imdario/mergo v0.3.12
 ## explicit; go 1.13
 github.com/imdario/mergo

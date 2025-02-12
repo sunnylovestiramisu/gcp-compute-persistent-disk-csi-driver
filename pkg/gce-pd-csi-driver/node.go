@@ -46,17 +46,11 @@ type GCENodeServer struct {
 	DeviceUtils     deviceutils.DeviceUtils
 	VolumeStatter   mountmanager.Statter
 	MetadataService metadataservice.MetadataService
+	EnableDataCache bool
 
 	// A map storing all volumes with ongoing operations so that additional operations
 	// for that same volume (as defined by VolumeID) return an Aborted error
 	volumeLocks *common.VolumeLocks
-
-	// enableDeviceInUseCheck, if true, will block NodeUnstageVolume requests if the specified
-	// device is still in use (or until --device-in-use-timeout is reached, if specified)
-	enableDeviceInUseCheck bool
-	// deviceInUseErrors keeps tracks of device names and a timestamp for when an error is
-	// encounted for that device
-	deviceInUseErrors *deviceErrMap
 
 	// If set, this semaphore will be used to serialize formatAndMount. It will be raised
 	// when the operation starts, and lowered either when finished, or when
@@ -70,14 +64,6 @@ type GCENodeServer struct {
 	// Embed UnimplementedNodeServer to ensure the driver returns Unimplemented for any
 	// new RPC methods that might be introduced in future versions of the spec.
 	csi.UnimplementedNodeServer
-}
-
-type NodeServerArgs struct {
-	// EnableDeviceInUseCheck enables functionality which will block NodeUnstageVolume request
-	// until the device is not in use
-	EnableDeviceInUseCheck bool
-
-	DeviceInUseTimeout time.Duration
 }
 
 var _ csi.NodeServer = &GCENodeServer{}
@@ -109,7 +95,6 @@ func getDefaultFsType() string {
 		return defaultLinuxFsType
 	}
 }
-
 func (ns *GCENodeServer) isVolumePathMounted(path string) bool {
 	notMnt, err := ns.Mounter.Interface.IsLikelyNotMountPoint(path)
 	klog.V(4).Infof("Checking volume path %s is mounted %t: error %v", path, !notMnt, err)
@@ -281,7 +266,7 @@ func (ns *GCENodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeU
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
 	defer ns.volumeLocks.Release(volumeID)
-
+	klog.V(2).Infof("==============Target path %s=========", targetPath)
 	if err := cleanupPublishPath(targetPath, ns.Mounter); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Unmount failed: %v\nUnmounting arguments: %s\n", err.Error(), targetPath))
 	}
@@ -294,6 +279,7 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	volumeID := req.GetVolumeId()
 	stagingTargetPath := req.GetStagingTargetPath()
 	volumeCapability := req.GetVolumeCapability()
+	nodeId := ns.MetadataService.GetName()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume ID must be provided")
 	}
@@ -303,7 +289,9 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 	if volumeCapability == nil {
 		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume Capability must be provided")
 	}
-
+	if len(nodeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Node ID must be provided")
+	}
 	if acquired := ns.volumeLocks.TryAcquire(volumeID); !acquired {
 		return nil, status.Errorf(codes.Aborted, common.VolumeOperationAlreadyExistsFmt, volumeID)
 	}
@@ -327,16 +315,28 @@ func (ns *GCENodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStage
 		partition = part
 	}
 	devicePath, err := getDevicePath(ns, volumeID, partition)
-
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error when getting device path: %v", err.Error()))
 	}
 
-	klog.V(4).Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
+	klog.Infof("Successfully found attached GCE PD %q at device path %s.", volumeKey.Name, devicePath)
+
+	// LVM PoC Steps
+	klog.V(2).Infof("====== NodeStageVolume PublishContext is %v ======", req.GetPublishContext())
+	if ns.EnableDataCache && req.GetPublishContext()[common.ContexLocalSsdCacheSize] != "" {
+		devFsPath, err := filepath.EvalSymlinks(devicePath)
+		if err != nil {
+			klog.Errorf("filepath.EvalSymlinks(%q) failed when trying to create volume group: %v", devicePath, err)
+		}
+		devicePath, err = setupCaching(devFsPath, req, nodeId)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error setting up cache: %v", err.Error()))
+		}
+	}
 
 	// Part 2: Check if mount already exists at stagingTargetPath
 	if ns.isVolumePathMounted(stagingTargetPath) {
-		klog.V(4).Infof("NodeStageVolume succeeded on volume %v to %s, mount already exists.", volumeID, stagingTargetPath)
+		klog.V(2).Infof("NodeStageVolume succeeded on volume %v to %s, mount already exists.", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
@@ -471,21 +471,25 @@ func (ns *GCENodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUns
 		return nil, status.Error(codes.Internal, fmt.Sprintf("NodeUnstageVolume failed: %v\nUnmounting arguments: %s\n", err.Error(), stagingTargetPath))
 	}
 
-	if ns.enableDeviceInUseCheck {
-		if err := ns.confirmDeviceUnused(volumeID); err != nil {
-			var ignoreableErr *ignoreableError
-			if errors.As(err, &ignoreableErr) {
-				klog.Warningf("Unable to check if device for %s is unused. Device has been unmounted successfully. Ignoring and continuing with unstaging. (%v)", volumeID, err)
-			} else if ns.deviceInUseErrors.deviceErrorExpired(volumeID) {
-				klog.Warningf("Device %s could not be released after timeout of %f seconds. NodeUnstageVolume will return success.", volumeID, ns.deviceInUseErrors.timeout.Seconds())
-			} else {
-				ns.deviceInUseErrors.markDeviceError(volumeID)
-				return nil, status.Errorf(codes.Internal, "NodeUnstageVolume for volume %s failed: %v", volumeID, err)
-			}
+	if err := ns.confirmDeviceUnused(volumeID); err != nil {
+		var targetErr *ignoreableError
+		if errors.As(err, &targetErr) {
+			klog.Warningf("Unabled to check if device for %s is unused. Device has been unmounted successfully. Ignoring and continuing with unstaging. (%v)", volumeID, err)
+		} else {
+			return nil, status.Errorf(codes.Internal, "NodeUnstageVolume for volume %s failed: %v", volumeID, err)
 		}
-		ns.deviceInUseErrors.deleteDevice(volumeID)
 	}
-
+	// The NodeUnstageVolume does not have any volume or publish context, we need to get the info from LVM locally
+	// Check if cache group cache-{volumeID} exist in LVM
+	if ns.EnableDataCache {
+		// LVM PoC Steps
+		klog.V(2).Infof("====== Start LVM PoC NodeUnstageVolume Steps ======")
+		nodeId := ns.MetadataService.GetName()
+		err := cleanupCache(volumeID, nodeId)
+		if err != nil {
+			klog.Errorf("Failed to cleanup cache: %v", err)
+		}
+	}
 	klog.V(4).Infof("NodeUnstageVolume succeeded on %v from %s", volumeID, stagingTargetPath)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }

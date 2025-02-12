@@ -101,8 +101,6 @@ type CloudProvider struct {
 	tagsRateLimiter *rate.Limiter
 
 	listInstancesConfig ListInstancesConfig
-
-	enableHdHA bool
 }
 
 var _ GCECompute = &CloudProvider{}

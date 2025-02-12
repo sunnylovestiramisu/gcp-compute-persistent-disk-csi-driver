@@ -156,8 +156,8 @@ func validateStoragePools(req *csi.CreateVolumeRequest, params common.DiskParame
 		return fmt.Errorf("invalid disk-type: %q. storage pools only support hyperdisk-balanced or hyperdisk-throughput", params.DiskType)
 	}
 
-	if params.IsRegional() {
-		return fmt.Errorf("storage pools do not support regional disks")
+	if params.ReplicationType == replicationTypeRegionalPD {
+		return fmt.Errorf("storage pools do not support regional PD")
 	}
 
 	if useVolumeCloning(req) {

@@ -38,7 +38,6 @@ type TestSuites struct {
 	TestSuite []TestSuite `xml:"testsuite"`
 }
 type TestSuite struct {
-	XMLName   string     `xml:"testsuite"`
 	TestCases []TestCase `xml:"testcase"`
 }
 
@@ -72,15 +71,13 @@ func (s SkipReason) MarshalText() ([]byte, error) {
 // MergeJUnit merges all junit xml files found in sourceDirectories into a single xml file at destination, using the filter.
 // The merging removes duplicate skipped tests. The original files are deleted.
 func MergeJUnit(testFilter string, sourceDirectories []string, destination string) error {
+	var junit TestSuite
 	var data []byte
 
 	re := regexp.MustCompile(testFilter)
 
 	var mergeErrors []string
 	var filesToDelete []string
-
-	// Keep only matching testcases. Testcases skipped in all test runs are only stored once.
-	filtered := map[string]TestCase{}
 	for _, dir := range sourceDirectories {
 		files, err := os.ReadDir(dir)
 		if err != nil {
@@ -89,7 +86,7 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 			continue
 		}
 		for _, file := range files {
-			if !strings.HasSuffix(file.Name(), ".xml") || file.Name() == "junit_runner.xml" {
+			if !strings.HasSuffix(file.Name(), ".xml") {
 				continue
 			}
 			fullFilename := filepath.Join(dir, file.Name())
@@ -98,28 +95,24 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 			if err != nil {
 				return err
 			}
-			var testSuiteData TestSuites
-			if err = xml.Unmarshal(data, &testSuiteData); err != nil {
-				return fmt.Errorf("failed to unmarshal XML file %v: %w", fullFilename, err)
-			}
-
-			for _, testsuite := range testSuiteData.TestSuite {
-				for _, testcase := range testsuite.TestCases {
-					if !re.MatchString(testcase.Name) {
-						continue
-					}
-					entry, ok := filtered[testcase.Name]
-					if !ok || // not present yet
-						entry.Skipped != "" && testcase.Skipped == "" { // replaced skipped test with real test run
-						filtered[testcase.Name] = testcase
-					}
-				}
+			if err = xml.Unmarshal(data, &junit); err != nil {
+				return err
 			}
 		}
 	}
 
 	// Keep only matching testcases. Testcases skipped in all test runs are only stored once.
-	var junit TestSuite
+	filtered := map[string]TestCase{}
+	for _, testcase := range junit.TestCases {
+		if !re.MatchString(testcase.Name) {
+			continue
+		}
+		entry, ok := filtered[testcase.Name]
+		if !ok || // not present yet
+			entry.Skipped != "" && testcase.Skipped == "" { // replaced skipped test with real test run
+			filtered[testcase.Name] = testcase
+		}
+	}
 	junit.TestCases = nil
 	for _, testcase := range filtered {
 		junit.TestCases = append(junit.TestCases, testcase)
@@ -128,7 +121,7 @@ func MergeJUnit(testFilter string, sourceDirectories []string, destination strin
 	// Re-encode.
 	data, err := xml.MarshalIndent(junit, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal junit data: %w", err)
+		return err
 	}
 
 	if err = os.WriteFile(destination, data, 0644); err != nil {

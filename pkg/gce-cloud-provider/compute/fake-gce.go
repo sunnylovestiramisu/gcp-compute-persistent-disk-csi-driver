@@ -79,10 +79,6 @@ func CreateFakeCloudProvider(project, zone string, cloudDisks []*CloudDisk) (*Fa
 		mockDiskStatus: "READY",
 	}
 	for _, d := range cloudDisks {
-		if d.LocationType() == meta.Regional {
-			fcp.disks[meta.RegionalKey(d.GetName(), d.GetRegion()).String()] = d
-			continue
-		}
 		diskZone := d.GetZone()
 		if diskZone == "" {
 			diskZone = zone
