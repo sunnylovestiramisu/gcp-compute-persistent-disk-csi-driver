@@ -1107,14 +1107,14 @@ func wrapOpErr(name string, opErr *computev1.OperationErrorErrors) error {
 			}
 		}
 	}
-	grpcErrCode := codeForGCEOpError(*opErr)
+	grpcErrCode := CodeForGCEOpError(*opErr)
 	return status.Errorf(grpcErrCode, "operation %v failed (%v): %v", name, opErr.Code, opErr.Message)
 }
 
-// codeForGCEOpError return the grpc error code for the passed in
+// CodeForGCEOpError return the grpc error code for the passed in
 // gce operation error. All of these error codes are filtered out from our SLO,
 // but will be monitored by the stockout reporting dashboard.
-func codeForGCEOpError(err computev1.OperationErrorErrors) codes.Code {
+func CodeForGCEOpError(err computev1.OperationErrorErrors) codes.Code {
 	userErrors := map[string]codes.Code{
 		"RESOURCE_NOT_FOUND":                        codes.NotFound,
 		"RESOURCE_ALREADY_EXISTS":                   codes.AlreadyExists,

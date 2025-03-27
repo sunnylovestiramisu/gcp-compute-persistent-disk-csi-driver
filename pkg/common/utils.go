@@ -80,6 +80,8 @@ const (
 	//   projects/{project}/zones/{zone}
 	zoneURIPattern = "projects/[^/]+/zones/([^/]+)$"
 	alphanums      = "bcdfghjklmnpqrstvwxz2456789"
+
+	DefaultModifyVolumeRequestHandlerTimeout = 2 * time.Second
 )
 
 var (

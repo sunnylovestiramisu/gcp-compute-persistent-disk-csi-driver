@@ -323,7 +323,7 @@ func TestCodeForGCEOpError(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Logf("Running test: %v", tc.name)
-		errCode := codeForGCEOpError(tc.inputErr)
+		errCode := CodeForGCEOpError(tc.inputErr)
 		if errCode != tc.expCode {
 			t.Errorf("test %v failed: got %v, expected %v", tc.name, errCode, tc.expCode)
 		}

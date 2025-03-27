@@ -37,6 +37,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 
+	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/coalescer"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common"
 	gce "sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/gce-cloud-provider/compute"
 	"sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/metrics"
@@ -120,6 +121,8 @@ type GCEControllerServer struct {
 	// Embed UnimplementedControllerServer to ensure the driver returns Unimplemented for any
 	// new RPC methods that might be introduced in future versions of the spec.
 	csi.UnimplementedControllerServer
+
+	modifyVolumeCoalescer coalescer.Coalescer[coalescer.CoalescerModifyVolumeParameters, common.ModifyVolumeParameters]
 }
 
 type MultiZoneVolumeHandleConfig struct {
@@ -2584,4 +2587,50 @@ func (b *csiErrorBackoff) next(id csiErrorBackoffId, code codes.Code) {
 func (b *csiErrorBackoff) reset(id csiErrorBackoffId) {
 	b.backoff.Reset(string(id))
 	delete(b.errorCodes, id)
+}
+
+func newModifyVolumeCoalescer(cloudProvider gce.GCECompute) coalescer.Coalescer[coalescer.CoalescerModifyVolumeParameters, common.ModifyVolumeParameters] {
+	return coalescer.New[coalescer.CoalescerModifyVolumeParameters, common.ModifyVolumeParameters](common.DefaultModifyVolumeRequestHandlerTimeout, mergeModifyVolumeRequest, executeModifyVolumeRequest(cloudProvider))
+}
+
+func mergeModifyVolumeRequest(input coalescer.CoalescerModifyVolumeParameters, existing coalescer.CoalescerModifyVolumeParameters) (coalescer.CoalescerModifyVolumeParameters, error) {
+	if *input.ModifyVolumeParameters.SizeGb != 0 {
+		if existing.ModifyVolumeParameters.SizeGb != nil && input.ModifyVolumeParameters.SizeGb != existing.ModifyVolumeParameters.SizeGb {
+			return existing, fmt.Errorf("Different size was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.SizeGb, input.ModifyVolumeParameters.SizeGb)
+		}
+		existing.ModifyVolumeParameters.SizeGb = input.ModifyVolumeParameters.SizeGb
+	}
+	if *input.ModifyVolumeParameters.IOPS != 0 {
+		if existing.ModifyVolumeParameters.IOPS != nil && input.ModifyVolumeParameters.IOPS != existing.ModifyVolumeParameters.IOPS {
+			return existing, fmt.Errorf("Different IOPS was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.IOPS, input.ModifyVolumeParameters.IOPS)
+		}
+		existing.ModifyVolumeParameters.IOPS = input.ModifyVolumeParameters.IOPS
+	}
+	if *input.ModifyVolumeParameters.Throughput != 0 {
+		if existing.ModifyVolumeParameters.Throughput != nil && input.ModifyVolumeParameters.Throughput != existing.ModifyVolumeParameters.Throughput {
+			return existing, fmt.Errorf("Different throughput was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.Throughput, input.ModifyVolumeParameters.Throughput)
+		}
+		existing.ModifyVolumeParameters.Throughput = input.ModifyVolumeParameters.Throughput
+	}
+
+	return existing, nil
+}
+
+func executeModifyVolumeRequest(c gce.GCECompute) func(string, coalescer.CoalescerModifyVolumeParameters) (common.ModifyVolumeParameters, error) {
+	return func(project string, volumeModifyParams coalescer.CoalescerModifyVolumeParameters) (common.ModifyVolumeParameters, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		err := c.UpdateDisk(ctx, project, volumeModifyParams.VolumeKey, volumeModifyParams.ExistingDisk, volumeModifyParams.ModifyVolumeParameters)
+		if err != nil {
+			// Kubernetes sidecars treats "Invalid Argument" errors as infeasible and retries less aggressively
+			volumeID, _ := common.KeyToVolumeID(volumeModifyParams.VolumeKey, project)
+			/*
+				if gce.CodeForGCEOpError(err) != codes.Internal{
+					return volumeModifyParams.ModifyVolumeParameters, status.Errorf(codes.InvalidArgument, "Could not modify volume (invalid argument) %q: %v", volumeID, err)
+				}*/
+			return volumeModifyParams.ModifyVolumeParameters, status.Errorf(codes.Internal, "Could not modify volume %q: %v", volumeID, err)
+		} else {
+			return volumeModifyParams.ModifyVolumeParameters, nil
+		}
+	}
 }

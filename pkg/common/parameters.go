@@ -165,6 +165,7 @@ type ParameterProcessor struct {
 type ModifyVolumeParameters struct {
 	IOPS       *int64
 	Throughput *int64
+	SizeGb     *int64
 }
 
 // ExtractAndDefaultParameters will take the relevant parameters from a map and
