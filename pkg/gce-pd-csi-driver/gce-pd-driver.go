@@ -174,6 +174,7 @@ func NewControllerServer(gceDriver *GCEDriver, cloudProvider gce.GCECompute, err
 		listVolumesConfig:           listVolumesConfig,
 		provisionableDisksConfig:    provisionableDisksConfig,
 		enableHdHA:                  enableHdHA,
+		modifyVolumeCoalescer:       newModifyVolumeCoalescer(cloudProvider),
 	}
 }
 
