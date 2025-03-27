@@ -850,7 +850,18 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		return nil, err
 	}
 
-	err = gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, existingDisk, volumeModifyParams)
+	coalescerVolumeModifyParams := coalescer.CoalescerModifyVolumeParameters{
+		VolumeKey:              volKey,
+		ExistingDisk:           existingDisk,
+		ModifyVolumeParameters: volumeModifyParams,
+	}
+
+	/*
+		err = gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, existingDisk, volumeModifyParams)
+	*/
+	// TODO: Log the return params
+	_, err = gceCS.modifyVolumeCoalescer.Coalesce(project, coalescerVolumeModifyParams)
+
 	if err != nil {
 		klog.Errorf("Failed to modify volume %s: %v", volumeID, err)
 		err = fmt.Errorf("Failed to modify volume %s: %w", volumeID, err)
@@ -1933,7 +1944,20 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 
 	sourceDisk, err := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
 	metrics.UpdateRequestMetadataFromDisk(ctx, sourceDisk)
-	resizedGb, err := gceCS.CloudProvider.ResizeDisk(ctx, project, volKey, reqBytes)
+	var resizedGb int64
+	if sourceDisk.GetPDType() != "hyperdisk-balanced" {
+		resizedGb, err = gceCS.CloudProvider.ResizeDisk(ctx, project, volKey, reqBytes)
+	} else {
+		existingDisk, _ := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
+		resizedGb := common.BytesToGbRoundUp(reqBytes)
+		coalescerVolumeModifyParams := coalescer.CoalescerModifyVolumeParameters{
+			VolumeKey:              volKey,
+			ExistingDisk:           existingDisk,
+			ModifyVolumeParameters: common.ModifyVolumeParameters{SizeGb: &resizedGb},
+		}
+		// TODO: Log the return params
+		_, err = gceCS.modifyVolumeCoalescer.Coalesce(project, coalescerVolumeModifyParams)
+	}
 
 	if err != nil {
 		return nil, common.LoggedError("ControllerExpandVolume failed to resize disk: ", err)
@@ -1941,7 +1965,7 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 
 	klog.V(4).Infof("ControllerExpandVolume succeeded for disk %v to size %v", volKey, resizedGb)
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         common.GbToBytes(resizedGb),
+		CapacityBytes:         reqBytes,
 		NodeExpansionRequired: true,
 	}, nil
 }
@@ -2570,19 +2594,19 @@ func newModifyVolumeCoalescer(cloudProvider gce.GCECompute) coalescer.Coalescer[
 func mergeModifyVolumeRequest(input coalescer.CoalescerModifyVolumeParameters, existing coalescer.CoalescerModifyVolumeParameters) (coalescer.CoalescerModifyVolumeParameters, error) {
 	if *input.ModifyVolumeParameters.SizeGb != 0 {
 		if existing.ModifyVolumeParameters.SizeGb != nil && input.ModifyVolumeParameters.SizeGb != existing.ModifyVolumeParameters.SizeGb {
-			return existing, fmt.Errorf("Different size was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.SizeGb, input.ModifyVolumeParameters.SizeGb)
+			return existing, fmt.Errorf("different size was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.SizeGb, input.ModifyVolumeParameters.SizeGb)
 		}
 		existing.ModifyVolumeParameters.SizeGb = input.ModifyVolumeParameters.SizeGb
 	}
 	if *input.ModifyVolumeParameters.IOPS != 0 {
 		if existing.ModifyVolumeParameters.IOPS != nil && input.ModifyVolumeParameters.IOPS != existing.ModifyVolumeParameters.IOPS {
-			return existing, fmt.Errorf("Different IOPS was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.IOPS, input.ModifyVolumeParameters.IOPS)
+			return existing, fmt.Errorf("different IOPS was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.IOPS, input.ModifyVolumeParameters.IOPS)
 		}
 		existing.ModifyVolumeParameters.IOPS = input.ModifyVolumeParameters.IOPS
 	}
 	if *input.ModifyVolumeParameters.Throughput != 0 {
 		if existing.ModifyVolumeParameters.Throughput != nil && input.ModifyVolumeParameters.Throughput != existing.ModifyVolumeParameters.Throughput {
-			return existing, fmt.Errorf("Different throughput was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.Throughput, input.ModifyVolumeParameters.Throughput)
+			return existing, fmt.Errorf("different throughput was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.Throughput, input.ModifyVolumeParameters.Throughput)
 		}
 		existing.ModifyVolumeParameters.Throughput = input.ModifyVolumeParameters.Throughput
 	}
