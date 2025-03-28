@@ -45,6 +45,7 @@ type Coalescer[InputType any, ResultType any] interface {
 }
 
 type CoalescerModifyVolumeParameters struct {
+	Project                string
 	ModifyVolumeParameters common.ModifyVolumeParameters
 	VolumeKey              *meta.Key
 	ExistingDisk           *gce.CloudDisk

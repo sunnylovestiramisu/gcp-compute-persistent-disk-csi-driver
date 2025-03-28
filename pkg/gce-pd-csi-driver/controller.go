@@ -877,6 +877,7 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 	}
 
 	coalescerVolumeModifyParams := coalescer.CoalescerModifyVolumeParameters{
+		Project:                project,
 		VolumeKey:              volKey,
 		ExistingDisk:           existingDisk,
 		ModifyVolumeParameters: volumeModifyParams,
@@ -886,7 +887,7 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		err = gceCS.CloudProvider.UpdateDisk(ctx, project, volKey, existingDisk, volumeModifyParams)
 	*/
 	// TODO: Log the return params
-	_, err = gceCS.modifyVolumeCoalescer.Coalesce(project, coalescerVolumeModifyParams)
+	_, err = gceCS.modifyVolumeCoalescer.Coalesce(volumeID, coalescerVolumeModifyParams)
 
 	if err != nil {
 		klog.Errorf("Failed to modify volume %s: %v", volumeID, err)
@@ -1977,12 +1978,13 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 		existingDisk, _ := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
 		resizedGb := common.BytesToGbRoundUp(reqBytes)
 		coalescerVolumeModifyParams := coalescer.CoalescerModifyVolumeParameters{
+			Project:                project,
 			VolumeKey:              volKey,
 			ExistingDisk:           existingDisk,
 			ModifyVolumeParameters: common.ModifyVolumeParameters{SizeGb: &resizedGb},
 		}
 		// TODO: Log the return params
-		_, err = gceCS.modifyVolumeCoalescer.Coalesce(project, coalescerVolumeModifyParams)
+		_, err = gceCS.modifyVolumeCoalescer.Coalesce(volumeID, coalescerVolumeModifyParams)
 	}
 
 	if err != nil {
@@ -2641,13 +2643,12 @@ func mergeModifyVolumeRequest(input coalescer.CoalescerModifyVolumeParameters, e
 }
 
 func executeModifyVolumeRequest(c gce.GCECompute) func(string, coalescer.CoalescerModifyVolumeParameters) (common.ModifyVolumeParameters, error) {
-	return func(project string, volumeModifyParams coalescer.CoalescerModifyVolumeParameters) (common.ModifyVolumeParameters, error) {
+	return func(volumeID string, volumeModifyParams coalescer.CoalescerModifyVolumeParameters) (common.ModifyVolumeParameters, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		err := c.UpdateDisk(ctx, project, volumeModifyParams.VolumeKey, volumeModifyParams.ExistingDisk, volumeModifyParams.ModifyVolumeParameters)
+		err := c.UpdateDisk(ctx, volumeModifyParams.Project, volumeModifyParams.VolumeKey, volumeModifyParams.ExistingDisk, volumeModifyParams.ModifyVolumeParameters)
 		if err != nil {
 			// Kubernetes sidecars treats "Invalid Argument" errors as infeasible and retries less aggressively
-			volumeID, _ := common.KeyToVolumeID(volumeModifyParams.VolumeKey, project)
 			/*
 				if gce.CodeForGCEOpError(err) != codes.Internal{
 					return volumeModifyParams.ModifyVolumeParameters, status.Errorf(codes.InvalidArgument, "Could not modify volume (invalid argument) %q: %v", volumeID, err)
