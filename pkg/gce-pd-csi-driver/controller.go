@@ -2620,23 +2620,27 @@ func newModifyVolumeCoalescer(cloudProvider gce.GCECompute) coalescer.Coalescer[
 }
 
 func mergeModifyVolumeRequest(input coalescer.CoalescerModifyVolumeParameters, existing coalescer.CoalescerModifyVolumeParameters) (coalescer.CoalescerModifyVolumeParameters, error) {
-	if *input.ModifyVolumeParameters.SizeGb != 0 {
+	klog.Info("================ mergeModifyVolumeRequest ================")
+	if input.ModifyVolumeParameters.SizeGb != nil && *input.ModifyVolumeParameters.SizeGb != 0 {
 		if existing.ModifyVolumeParameters.SizeGb != nil && input.ModifyVolumeParameters.SizeGb != existing.ModifyVolumeParameters.SizeGb {
 			return existing, fmt.Errorf("different size was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.SizeGb, input.ModifyVolumeParameters.SizeGb)
 		}
 		existing.ModifyVolumeParameters.SizeGb = input.ModifyVolumeParameters.SizeGb
+		klog.Info("================ merge SizeGb ================")
 	}
-	if *input.ModifyVolumeParameters.IOPS != 0 {
+	if input.ModifyVolumeParameters.IOPS != nil && *input.ModifyVolumeParameters.IOPS != 0 {
 		if existing.ModifyVolumeParameters.IOPS != nil && input.ModifyVolumeParameters.IOPS != existing.ModifyVolumeParameters.IOPS {
 			return existing, fmt.Errorf("different IOPS was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.IOPS, input.ModifyVolumeParameters.IOPS)
 		}
 		existing.ModifyVolumeParameters.IOPS = input.ModifyVolumeParameters.IOPS
+		klog.Info("================ merge IOPS ================")
 	}
-	if *input.ModifyVolumeParameters.Throughput != 0 {
+	if input.ModifyVolumeParameters.Throughput != nil && *input.ModifyVolumeParameters.Throughput != 0 {
 		if existing.ModifyVolumeParameters.Throughput != nil && input.ModifyVolumeParameters.Throughput != existing.ModifyVolumeParameters.Throughput {
 			return existing, fmt.Errorf("different throughput was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.Throughput, input.ModifyVolumeParameters.Throughput)
 		}
 		existing.ModifyVolumeParameters.Throughput = input.ModifyVolumeParameters.Throughput
+		klog.Info("================ merge Throughput ================")
 	}
 
 	return existing, nil
@@ -2644,6 +2648,7 @@ func mergeModifyVolumeRequest(input coalescer.CoalescerModifyVolumeParameters, e
 
 func executeModifyVolumeRequest(c gce.GCECompute) func(string, coalescer.CoalescerModifyVolumeParameters) (common.ModifyVolumeParameters, error) {
 	return func(volumeID string, volumeModifyParams coalescer.CoalescerModifyVolumeParameters) (common.ModifyVolumeParameters, error) {
+		klog.Info("================ executeModifyVolumeRequest ================")
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		err := c.UpdateDisk(ctx, volumeModifyParams.Project, volumeModifyParams.VolumeKey, volumeModifyParams.ExistingDisk, volumeModifyParams.ModifyVolumeParameters)

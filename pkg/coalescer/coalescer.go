@@ -126,24 +126,24 @@ func (c *coalescer[InputType, ResultType]) coalescerThread() {
 	for {
 		select {
 		case i := <-c.inputChannel:
-			klog.V(7).InfoS("coalescerThread: Input received", "key", i.key, "input", i.input)
+			klog.InfoS("coalescerThread: Input received", "key", i.key, "input", i.input)
 			if pending, ok := c.pendingInputs[i.key]; ok {
-				klog.V(7).InfoS("coalescerThread: Input matched existing input, attempting to merge", "key", i.key)
+				klog.InfoS("coalescerThread: Input matched existing input, attempting to merge", "key", i.key)
 				newInput, err := c.mergeFunction(i.input, pending.input)
 
 				if err == nil {
-					klog.V(7).InfoS("coalescerThread: Merged input into existing inputs", "key", i.key)
+					klog.InfoS("coalescerThread: Merged input into existing inputs", "key", i.key)
 					pending.input = newInput
 					pending.resultChannels = append(pending.resultChannels, i.resultChannel)
 					c.pendingInputs[i.key] = pending
 				} else {
-					klog.V(7).InfoS("coalescerThread: Failed to merge inputs into existing inputs", "key", i.key)
+					klog.InfoS("coalescerThread: Failed to merge inputs into existing inputs", "key", i.key)
 					i.resultChannel <- result[ResultType]{
 						err: err,
 					}
 				}
 			} else {
-				klog.V(7).InfoS("coalescerThread: New input, setting up fresh coalesce operation", "key", i.key)
+				klog.InfoS("coalescerThread: New input, setting up fresh coalesce operation", "key", i.key)
 				c.pendingInputs[i.key] = pendingInput[InputType, ResultType]{
 					input: i.input,
 					resultChannels: []chan result[ResultType]{
@@ -156,13 +156,13 @@ func (c *coalescer[InputType, ResultType]) coalescerThread() {
 			}
 
 		case k := <-c.timerChannel:
-			klog.V(7).InfoS("coalescerThread: Coalescing delay reached, spawning execution thread", "key", k)
+			klog.InfoS("coalescerThread: Coalescing delay reached, spawning execution thread", "key", k)
 			pending := c.pendingInputs[k]
 			delete(c.pendingInputs, k)
 
 			go func() {
 				r, err := c.executeFunction(k, pending.input)
-				klog.V(7).InfoS("coalescerThread: Finished executing", "key", k, "result", r, "error", err)
+				klog.InfoS("coalescerThread: Finished executing", "key", k, "result", r, "error", err)
 				result := result[ResultType]{
 					result: r,
 					err:    err,
