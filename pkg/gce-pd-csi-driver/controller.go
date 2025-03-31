@@ -875,7 +875,7 @@ func (gceCS *GCEControllerServer) ControllerModifyVolume(ctx context.Context, re
 		err = status.Errorf(codes.InvalidArgument, "Cannot specify throughput for disk type %s", diskType)
 		return nil, err
 	}
-
+	klog.Info("================ Merging coalescerVolumeModifyParams in ControllerModifyVolume ================")
 	coalescerVolumeModifyParams := coalescer.CoalescerModifyVolumeParameters{
 		Project:                project,
 		VolumeKey:              volKey,
@@ -1940,6 +1940,7 @@ func (gceCS *GCEControllerServer) ListSnapshots(ctx context.Context, req *csi.Li
 }
 
 func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	klog.Info("================ Called ControllerExpandVolume ================")
 	var err error
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -1977,11 +1978,12 @@ func (gceCS *GCEControllerServer) ControllerExpandVolume(ctx context.Context, re
 	} else {
 		existingDisk, _ := gceCS.CloudProvider.GetDisk(ctx, project, volKey)
 		resizedGb := common.BytesToGbRoundUp(reqBytes)
+		klog.Info("================ Merging coalescerVolumeModifyParams in ExpandVolume ================")
 		coalescerVolumeModifyParams := coalescer.CoalescerModifyVolumeParameters{
 			Project:                project,
 			VolumeKey:              volKey,
 			ExistingDisk:           existingDisk,
-			ModifyVolumeParameters: common.ModifyVolumeParameters{SizeGb: &resizedGb},
+			ModifyVolumeParameters: common.ModifyVolumeParameters{SizeGb: resizedGb},
 		}
 		// TODO: Log the return params
 		_, err = gceCS.modifyVolumeCoalescer.Coalesce(volumeID, coalescerVolumeModifyParams)
@@ -2616,29 +2618,40 @@ func (b *csiErrorBackoff) reset(id csiErrorBackoffId) {
 }
 
 func newModifyVolumeCoalescer(cloudProvider gce.GCECompute) coalescer.Coalescer[coalescer.CoalescerModifyVolumeParameters, common.ModifyVolumeParameters] {
+	klog.Info("================ newModifyVolumeCoalescer ================")
 	return coalescer.New[coalescer.CoalescerModifyVolumeParameters, common.ModifyVolumeParameters](common.DefaultModifyVolumeRequestHandlerTimeout, mergeModifyVolumeRequest, executeModifyVolumeRequest(cloudProvider))
 }
 
 func mergeModifyVolumeRequest(input coalescer.CoalescerModifyVolumeParameters, existing coalescer.CoalescerModifyVolumeParameters) (coalescer.CoalescerModifyVolumeParameters, error) {
 	klog.Info("================ mergeModifyVolumeRequest ================")
-	if input.ModifyVolumeParameters.SizeGb != nil && *input.ModifyVolumeParameters.SizeGb != 0 {
-		if existing.ModifyVolumeParameters.SizeGb != nil && input.ModifyVolumeParameters.SizeGb != existing.ModifyVolumeParameters.SizeGb {
-			return existing, fmt.Errorf("different size was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.SizeGb, input.ModifyVolumeParameters.SizeGb)
-		}
+	if input.ModifyVolumeParameters.IOPS != nil && input.ModifyVolumeParameters.Throughput != nil {
+		klog.Infof("Existing sizeGb is %v, iops is %v, throughput is %v", input.ModifyVolumeParameters.SizeGb, *input.ModifyVolumeParameters.IOPS, *&input.ModifyVolumeParameters.Throughput)
+	}
+	if existing.ModifyVolumeParameters.IOPS != nil && existing.ModifyVolumeParameters.Throughput != nil {
+		klog.Infof("Existing sizeGb is %v, iops is %v, throughput is %v", existing.ModifyVolumeParameters.SizeGb, *existing.ModifyVolumeParameters.IOPS, *existing.ModifyVolumeParameters.Throughput)
+	}
+
+	if input.ModifyVolumeParameters.SizeGb != 0 {
+		/*
+			if existing.ModifyVolumeParameters.SizeGb != 0 && input.ModifyVolumeParameters.SizeGb != existing.ModifyVolumeParameters.SizeGb {
+				return existing, fmt.Errorf("different size was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.SizeGb, input.ModifyVolumeParameters.SizeGb)
+			}*/
 		existing.ModifyVolumeParameters.SizeGb = input.ModifyVolumeParameters.SizeGb
 		klog.Info("================ merge SizeGb ================")
 	}
 	if input.ModifyVolumeParameters.IOPS != nil && *input.ModifyVolumeParameters.IOPS != 0 {
-		if existing.ModifyVolumeParameters.IOPS != nil && input.ModifyVolumeParameters.IOPS != existing.ModifyVolumeParameters.IOPS {
-			return existing, fmt.Errorf("different IOPS was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.IOPS, input.ModifyVolumeParameters.IOPS)
-		}
+		/*
+			if existing.ModifyVolumeParameters.IOPS != nil && input.ModifyVolumeParameters.IOPS != existing.ModifyVolumeParameters.IOPS {
+				return existing, fmt.Errorf("different IOPS was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.IOPS, input.ModifyVolumeParameters.IOPS)
+			}*/
 		existing.ModifyVolumeParameters.IOPS = input.ModifyVolumeParameters.IOPS
 		klog.Info("================ merge IOPS ================")
 	}
 	if input.ModifyVolumeParameters.Throughput != nil && *input.ModifyVolumeParameters.Throughput != 0 {
-		if existing.ModifyVolumeParameters.Throughput != nil && input.ModifyVolumeParameters.Throughput != existing.ModifyVolumeParameters.Throughput {
-			return existing, fmt.Errorf("different throughput was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.Throughput, input.ModifyVolumeParameters.Throughput)
-		}
+		/*
+			if existing.ModifyVolumeParameters.Throughput != nil && input.ModifyVolumeParameters.Throughput != existing.ModifyVolumeParameters.Throughput {
+				return existing, fmt.Errorf("different throughput was requested by a previous request. Current: %d, Requested: %d", existing.ModifyVolumeParameters.Throughput, input.ModifyVolumeParameters.Throughput)
+			}*/
 		existing.ModifyVolumeParameters.Throughput = input.ModifyVolumeParameters.Throughput
 		klog.Info("================ merge Throughput ================")
 	}
@@ -2649,18 +2662,25 @@ func mergeModifyVolumeRequest(input coalescer.CoalescerModifyVolumeParameters, e
 func executeModifyVolumeRequest(c gce.GCECompute) func(string, coalescer.CoalescerModifyVolumeParameters) (common.ModifyVolumeParameters, error) {
 	return func(volumeID string, volumeModifyParams coalescer.CoalescerModifyVolumeParameters) (common.ModifyVolumeParameters, error) {
 		klog.Info("================ executeModifyVolumeRequest ================")
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		err := c.UpdateDisk(ctx, volumeModifyParams.Project, volumeModifyParams.VolumeKey, volumeModifyParams.ExistingDisk, volumeModifyParams.ModifyVolumeParameters)
-		if err != nil {
-			// Kubernetes sidecars treats "Invalid Argument" errors as infeasible and retries less aggressively
-			/*
-				if gce.CodeForGCEOpError(err) != codes.Internal{
-					return volumeModifyParams.ModifyVolumeParameters, status.Errorf(codes.InvalidArgument, "Could not modify volume (invalid argument) %q: %v", volumeID, err)
-				}*/
-			return volumeModifyParams.ModifyVolumeParameters, status.Errorf(codes.Internal, "Could not modify volume %q: %v", volumeID, err)
-		} else {
-			return volumeModifyParams.ModifyVolumeParameters, nil
+		if volumeModifyParams.ModifyVolumeParameters.SizeGb != 0 || (volumeModifyParams.ModifyVolumeParameters.IOPS != nil && *volumeModifyParams.ModifyVolumeParameters.IOPS != 0) {
+			if volumeModifyParams.ModifyVolumeParameters.IOPS != nil && volumeModifyParams.ModifyVolumeParameters.Throughput != nil {
+				klog.Infof("UpdateDisk with sizeGb %v, iops %v, throughput %v", volumeModifyParams.ModifyVolumeParameters.SizeGb, *volumeModifyParams.ModifyVolumeParameters.IOPS, *volumeModifyParams.ModifyVolumeParameters.Throughput)
+			}
+			err := c.UpdateDisk(ctx, volumeModifyParams.Project, volumeModifyParams.VolumeKey, volumeModifyParams.ExistingDisk, volumeModifyParams.ModifyVolumeParameters)
+			klog.Info("================ UpdateDisk in Coalescer ================")
+			if err != nil {
+				// Kubernetes sidecars treats "Invalid Argument" errors as infeasible and retries less aggressively
+				/*
+					if gce.CodeForGCEOpError(err) != codes.Internal{
+						return volumeModifyParams.ModifyVolumeParameters, status.Errorf(codes.InvalidArgument, "Could not modify volume (invalid argument) %q: %v", volumeID, err)
+					}*/
+				return volumeModifyParams.ModifyVolumeParameters, status.Errorf(codes.Internal, "Could not modify volume %q: %v", volumeID, err)
+			} else {
+				return volumeModifyParams.ModifyVolumeParameters, nil
+			}
 		}
+		return volumeModifyParams.ModifyVolumeParameters, nil
 	}
 }

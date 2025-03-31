@@ -650,6 +650,10 @@ func (cloud *CloudProvider) updateZonalDisk(ctx context.Context, project string,
 		updatedDisk.ProvisionedThroughput = *params.Throughput
 		paths = append(paths, "provisionedThroughput")
 	}
+	if params.SizeGb != 0 {
+		updatedDisk.SizeGb = params.SizeGb
+		paths = append(paths, "sizeGb")
+	}
 
 	diskUpdateOp := cloud.service.Disks.Update(project, volKey.Zone, volKey.Name, updatedDisk)
 	diskUpdateOp.Paths(paths...)

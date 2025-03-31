@@ -108,6 +108,8 @@ type coalescer[InputType any, ResultType any] struct {
 func (c *coalescer[InputType, ResultType]) Coalesce(key string, input InputType) (ResultType, error) {
 	resultChannel := make(chan result[ResultType])
 
+	klog.Info("================ Coalesce func call ================")
+
 	c.inputChannel <- newInput[InputType, ResultType]{
 		key:           key,
 		input:         input,
