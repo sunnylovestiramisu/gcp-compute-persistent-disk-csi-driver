@@ -2664,18 +2664,21 @@ func executeModifyVolumeRequest(c gce.GCECompute) func(string, coalescer.Coalesc
 		klog.Info("================ executeModifyVolumeRequest ================")
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
+
 		if volumeModifyParams.ModifyVolumeParameters.SizeGb != 0 || (volumeModifyParams.ModifyVolumeParameters.IOPS != nil && *volumeModifyParams.ModifyVolumeParameters.IOPS != 0) {
+			if volumeModifyParams.ExistingDisk.GetSizeGb() == volumeModifyParams.ModifyVolumeParameters.SizeGb && volumeModifyParams.ModifyVolumeParameters.IOPS == nil {
+				return volumeModifyParams.ModifyVolumeParameters, nil
+			}
 			if volumeModifyParams.ModifyVolumeParameters.IOPS != nil && volumeModifyParams.ModifyVolumeParameters.Throughput != nil {
 				klog.Infof("UpdateDisk with sizeGb %v, iops %v, throughput %v", volumeModifyParams.ModifyVolumeParameters.SizeGb, *volumeModifyParams.ModifyVolumeParameters.IOPS, *volumeModifyParams.ModifyVolumeParameters.Throughput)
 			}
 			err := c.UpdateDisk(ctx, volumeModifyParams.Project, volumeModifyParams.VolumeKey, volumeModifyParams.ExistingDisk, volumeModifyParams.ModifyVolumeParameters)
 			klog.Info("================ UpdateDisk in Coalescer ================")
 			if err != nil {
-				// Kubernetes sidecars treats "Invalid Argument" errors as infeasible and retries less aggressively
-				/*
-					if gce.CodeForGCEOpError(err) != codes.Internal{
-						return volumeModifyParams.ModifyVolumeParameters, status.Errorf(codes.InvalidArgument, "Could not modify volume (invalid argument) %q: %v", volumeID, err)
-					}*/
+				if strings.Contains(err.Error(), "Disk cannot be resized while there is an ongoing mutation") {
+					return volumeModifyParams.ModifyVolumeParameters, nil
+				}
+				/*return volumeModifyParams.ModifyVolumeParameters, status.Errorf(codes.InvalidArgument, "Could not modify volume (invalid argument) %q: %v", volumeID, err)*/
 				return volumeModifyParams.ModifyVolumeParameters, status.Errorf(codes.Internal, "Could not modify volume %q: %v", volumeID, err)
 			} else {
 				return volumeModifyParams.ModifyVolumeParameters, nil
