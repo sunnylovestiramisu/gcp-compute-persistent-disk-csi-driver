@@ -74,7 +74,7 @@ var (
 	formatAndMountTimeout       = flag.Duration("format-and-mount-timeout", 1*time.Minute, "The maximum duration of a format and mount operation before another such operation will be started. Used only if --serialize-format-and-mount")
 	fallbackRequisiteZonesFlag  = flag.String("fallback-requisite-zones", "", "Comma separated list of requisite zones that will be used if there are not sufficient zones present in requisite topologies when provisioning a disk")
 	enableStoragePoolsFlag      = flag.Bool("enable-storage-pools", false, "If set to true, the CSI Driver will allow volumes to be provisioned in Storage Pools")
-	enableHdHAFlag              = flag.Bool("allow-hdha-provisioning", false, "If set to true, will allow the driver to provision Hyperdisk-balanced High Availability disks")
+	enableHdHAFlag              = flag.Bool("allow-hdha-provisioning", true, "If set to true, will allow the driver to provision Hyperdisk-balanced High Availability disks")
 	enableDataCacheFlag         = flag.Bool("enable-data-cache", false, "If set to true, the CSI Driver will allow volumes to be provisioned with Data Cache configuration")
 	nodeName                    = flag.String("node-name", "", "The node this driver is running on")
 
