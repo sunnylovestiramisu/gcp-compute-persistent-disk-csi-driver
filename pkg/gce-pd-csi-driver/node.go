@@ -579,6 +579,7 @@ func (ns *GCENodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRe
 	nodeID := common.CreateNodeID(ns.MetadataService.GetProject(), ns.MetadataService.GetZone(), ns.MetadataService.GetName())
 
 	volumeLimits, err := ns.GetVolumeLimits(ctx)
+	klog.InfoS("========== volumeLimits %s ==========", volumeLimits)
 	if err != nil {
 		klog.Errorf("GetVolumeLimits failed: %v", err.Error())
 	}
@@ -752,6 +753,7 @@ func (ns *GCENodeServer) GetVolumeLimits(ctx context.Context) (int64, error) {
 	// Get attach limit override from label
 	attachLimitOverride, err := GetAttachLimitsOverrideFromNodeLabel(ctx, ns.MetadataService.GetName())
 	if err == nil && attachLimitOverride > 0 && attachLimitOverride < 128 {
+		klog.InfoS("========== attachLimitOverride %s ==========", attachLimitOverride)
 		return attachLimitOverride, nil
 	}
 	// If there is an error or the range is not valid, still proceed to get defaults for the machine type
