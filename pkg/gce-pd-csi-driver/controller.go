@@ -2547,6 +2547,12 @@ func createSingleZoneDisk(ctx context.Context, cloudProvider gce.GCECompute, nam
 		return nil, fmt.Errorf("failed to insert zonal disk: %w", err)
 	}
 
+	// Insert long wait time
+	waitTime := 5 * time.Minute
+	klog.Infof("================ Start waiting for 5 mins ================")
+	time.Sleep(waitTime)
+	klog.Infof("================ End wait time ================")
+
 	// failed to GetDisk, however the Disk may already be created, the error code should be non-Final
 	disk, err := cloudProvider.GetDisk(ctx, project, meta.ZonalKey(name, diskZone))
 	if err != nil {
