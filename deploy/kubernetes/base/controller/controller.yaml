@@ -19,6 +19,7 @@ spec:
       hostNetwork: true
       nodeSelector:
         kubernetes.io/os: linux
+        cloud.google.com/gke-nodepool: controller-pool
       serviceAccountName: csi-gce-pd-controller-sa
       priorityClassName: csi-gce-pd-controller
       containers:
