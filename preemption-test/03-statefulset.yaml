@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: datacache-test-ss
+spec:
+  serviceName: "datacache-test-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: datacache-test
+  template:
+    metadata:
+      labels:
+        app: datacache-test
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: datacache-node-pool
+      containers:
+      - name: writer
+        image: busybox
+        command: ["/bin/sh", "-c", "while true; do echo $$(date) >> /mnt/data/test.log; sleep 1; done"]
+        volumeMounts:
+        - name: data-volume
+          mountPath: /mnt/data
+  volumeClaimTemplates:
+  - metadata:
+      name: data-volume
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "datacache-sc"
+      resources:
+        requests:
+          storage: 20Gi

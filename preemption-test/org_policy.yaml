@@ -1,0 +1,4 @@
+name: projects/songsunny-gke-dev2/policies/iam.disableServiceAccountKeyCreation
+spec:
+  rules:
+  - enforce: false

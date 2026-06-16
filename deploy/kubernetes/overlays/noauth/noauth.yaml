@@ -5,8 +5,20 @@ metadata:
 spec:
   template:
     spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: datacache-node-pool
       containers:
         - name: gce-pd-driver
+          env:
+            - $patch: delete
+              name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/etc/cloud-sa/cloud-sa.json"
+          volumeMounts:
+            - $patch: delete
+              name: cloud-sa-volume
+              readOnly: true
+              mountPath: "/etc/cloud-sa"
+        - name: taint-controller
           env:
             - $patch: delete
               name: GOOGLE_APPLICATION_CREDENTIALS
@@ -21,5 +33,3 @@ spec:
           name: cloud-sa-volume
           secret:
             secretName: cloud-sa
-
-
